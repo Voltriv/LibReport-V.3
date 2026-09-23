@@ -1,0 +1,41 @@
+{
+  "name": "libreport-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "setup": "npm install && npm --prefix Backend install && npm --prefix Frontend install",
+    "db:bootstrap": "npm --prefix Backend run db:bootstrap",
+    "db:indexes": "npm --prefix Backend run db:indexes",
+    "db:seed": "npm --prefix Backend run db:seed",
+    "dev:backend": "npm --prefix Backend run dev",
+    "dev:backend:memory": "cross-env USE_MEMORY_DB=true npm --prefix Backend run dev",
+    "dev:backend:nodb": "npm --prefix Backend run dev:nodb",
+    "dev:frontend": "npm --prefix Frontend start",
+    "dev:frontend:no-depr": "npm --prefix Frontend run start:no-depr",
+    "dev": "node scripts/dev-all.js",
+    "dev:fast": "cross-env USE_MEMORY_DB=true concurrently -n backend,frontend -c blue,magenta \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:fast:external": "concurrently -n backend,frontend -c blue,magenta \"npm:dev:backend\" \"npm:dev:frontend:no-depr\"",
+    "dev:atlas": "concurrently -n backend,frontend -c blue,magenta \"npm:dev:backend\" \"npm:dev:frontend:no-depr\"",
+    "start": "node scripts/dev-all.js",
+    "clean": "rimraf Frontend/build",
+    "build:frontend": "npm --prefix Frontend run build",
+    "build:clean": "npm run clean && npm run build:frontend",
+    "demo:seed:memory": "cross-env USE_MEMORY_DB=true npm --prefix Backend run db:bootstrap",
+    "demo:backend:memory": "cross-env USE_MEMORY_DB=true npm --prefix Backend run dev",
+    "demo:start:memory": "concurrently -k -n backend,frontend -c blue,magenta \"npm:demo:backend:memory\" \"npm:dev:frontend\"",
+    "demo": "npm run demo:seed:memory && npm run demo:start:memory",
+    "free:3000": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill-port-3000.ps1",
+    "smoke": "node scripts/smoke.js",
+    "smoke:full": "node scripts/wait-for-health.js && node scripts/smoke.js --full",
+    "wait": "node scripts/wait-for-health.js",
+    "smoke:wait": "node scripts/wait-for-health.js && node scripts/smoke.js",
+    "report:unused:frontend": "node scripts/find-unused-frontend.js",
+    "prestart:guided": "npm run free:3000",
+    "start:guided": "node scripts/start-guided.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
+    "rimraf": "^5.0.5"
+  }
+}

@@ -1,0 +1,4 @@
+title,author,isbn,bookCode,department,genre,tags,totalCopies,availableCopies,coverImageFile,pdfFile
+The Hobbit,J.R.R. Tolkien,9780547928227,HBT-001,CELA,Fantasy,"fantasy|classic",5,5,assets/hobbit-cover.jpg,
+To Kill a Mockingbird,Harper Lee,9780061120084,TMK-002,SHS,Classic,"classic|novel",3,3,assets/mockingbird-cover.jpg,
+1984,George Orwell,9780451524935,NIN-003,CCJE,Dystopian,"dystopian|political",4,4,,

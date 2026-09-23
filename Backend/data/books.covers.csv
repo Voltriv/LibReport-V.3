@@ -1,0 +1,4 @@
+title,author,bookCode,department,genre,totalCopies,availableCopies,coverImageFile,coverImageMime,pdfFile,pdfMime
+Clean Code,Robert C. Martin,BK-0001,CITE,Technology,3,2,./assets/hobbit-cover.jpg,image/jpeg,./assets/hobbit.pdf,application/pdf
+The Design of Everyday Things,Don Norman,BK-0002,CAHS,Design,2,1,./assets/mockingbird-cover.jpg,image/jpeg,,
+Introduction to Algorithms,Cormen et al.,BK-0003,CEA,Computer Science,5,5,./assets/hobbit-cover.jpg,image/jpeg,,
