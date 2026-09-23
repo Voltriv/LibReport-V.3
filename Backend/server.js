@@ -74,6 +74,18 @@ const authRateLimiter = rateLimit({
   message: { error: 'Too many attempts. Please try again later.' }
 });
 
+// Password reset gets its own bucket rather than sharing the one above. A reset
+// token is 32 hex characters, so guessing is the threat that matters, and the
+// request endpoint can be used to flood a mailbox. Keeping the budgets separate
+// also means reset attempts cannot exhaust a legitimate user's login allowance.
+const passwordResetRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many password reset attempts. Please try again later.' }
+});
+
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -1205,7 +1217,23 @@ async function accountIsDisabled(sub) {
 // a verdict rather than a middleware short-circuit can share one implementation
 // with authRequired. GET /api/files/:id needs exactly that: cover images must
 // stay readable without a token, book PDFs must not.
+//
+// Memoized for the life of the request. The global dispatcher below resolves a
+// guard for every /api path, and 62 routes then pass a guard again as route
+// middleware, so without this every authenticated request verified its JWT twice
+// and ran accountIsDisabled twice -- up to six redundant collection lookups.
+// Per-request caching is safe: the token cannot change mid-request, and the
+// disabled check still runs afresh on the next one, which is what it is for.
+const AUTH_RESULT = Symbol('authResult');
+
 async function resolveAuth(req) {
+  if (req[AUTH_RESULT]) return req[AUTH_RESULT];
+  const result = await computeAuth(req);
+  req[AUTH_RESULT] = result;
+  return result;
+}
+
+async function computeAuth(req) {
   const header = req.headers.authorization || '';
   const [, token] = header.split(' ');
   if (!token) return { ok: false, status: 401, message: 'missing token' };
@@ -1822,7 +1850,7 @@ app.patch('/api/faculty/:id', adminRequired, async (req, res) => {
 });
 
 // Request password reset (returns token for demo; normally emailed)
-app.post('/api/auth/request-reset', async (req, res) => {
+app.post('/api/auth/request-reset', passwordResetRateLimiter, async (req, res) => {
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: 'email required' });
   const user = await User.findOne({ email: String(email).toLowerCase() });
@@ -1836,7 +1864,7 @@ app.post('/api/auth/request-reset', async (req, res) => {
 });
 
 // Perform password reset
-app.post('/api/auth/reset', async (req, res) => {
+app.post('/api/auth/reset', passwordResetRateLimiter, async (req, res) => {
   const { uid, token, newPassword } = req.body || {};
   if (!uid || !token || !newPassword) return res.status(400).json({ error: 'uid, token, newPassword required' });
   if (String(newPassword).length < 8) return res.status(400).json({ error: 'password must be at least 8 chars' });

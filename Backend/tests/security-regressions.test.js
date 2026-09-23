@@ -18,6 +18,24 @@ const { seedFixtures } = require('./helpers/fixtures');
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const mongoose = require('mongoose');
+
+// Counts the collection lookups accountIsDisabled performs. GET /api/hours is
+// the clean probe: it carries an inline authRequired, is also matched by the
+// global dispatcher, and its own handler touches only the hours collection.
+const AUTH_COLLECTIONS = new Set(['admins', 'users', 'faculty']);
+async function countAuthLookups(run) {
+  let lookups = 0;
+  mongoose.set('debug', (collection, method) => {
+    if (method === 'findOne' && AUTH_COLLECTIONS.has(collection)) lookups += 1;
+  });
+  try {
+    await run();
+  } finally {
+    mongoose.set('debug', false);
+  }
+  return lookups;
+}
 
 let app;
 let baseUrl;
@@ -92,6 +110,36 @@ test('security regressions', async (t) => {
       assert.equal(first.status, 200);
       assert.equal(second.status, 200);
       assert.deepEqual(second.body, first.body);
+    });
+
+    await t.test('S4: a request resolves its identity once, not twice', async () => {
+      // A student token lives in `users`, so accountIsDisabled costs two lookups:
+      // a miss on admins, then a hit on users. The dispatcher and the route's own
+      // authRequired both ran it, making four. Memoizing the result on the
+      // request halves that without removing a single role check.
+      const lookups = await countAuthLookups(async () => {
+        const res = await fetchJson(`${baseUrl}/api/hours?branch=Main`, { headers: studentHeaders });
+        assert.equal(res.status, 200);
+      });
+      assert.equal(lookups, 2, `expected one identity resolution (2 lookups), saw ${lookups}`);
+    });
+
+    await t.test('S3: password reset endpoints are rate limited', async () => {
+      // The limiter allows 10 per 15 minutes; the 11th must be rejected. Before
+      // this, the reset token -- 32 hex characters -- could be guessed without
+      // any throttle at all.
+      let lastStatus = 0;
+      for (let i = 0; i < 12; i += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        const res = await fetchJson(`${baseUrl}/api/auth/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: String(f.student._id), token: 'f'.repeat(32), newPassword: 'not-the-one' })
+        });
+        lastStatus = res.status;
+        if (lastStatus === 429) break;
+      }
+      assert.equal(lastStatus, 429, 'repeated reset attempts must eventually be throttled');
     });
 
     await t.test('S2: an error response is not cached', async () => {
