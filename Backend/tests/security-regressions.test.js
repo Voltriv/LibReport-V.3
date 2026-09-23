@@ -142,6 +142,26 @@ test('security regressions', async (t) => {
       assert.equal(lastStatus, 429, 'repeated reset attempts must eventually be throttled');
     });
 
+    await t.test('S5: only the upload routes accept a large body', async () => {
+      // 2 MB of JSON: over the 1 MB default, under the 50 MB upload ceiling.
+      const padding = 'x'.repeat(2 * 1024 * 1024);
+      const post = (path, body) =>
+        fetchJson(`${baseUrl}${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...adminHeaders },
+          body: JSON.stringify(body)
+        });
+
+      const rejected = await post('/api/visit/enter', { barcode: padding });
+      assert.equal(rejected.status, 413, 'a non-upload route must refuse an oversized body');
+
+      // The upload route must still accept it. It fails validation on the
+      // contents, which is fine -- the point is that the body was parsed rather
+      // than rejected at 413.
+      const accepted = await post('/api/books', { title: 'Big', author: 'A', notes: padding });
+      assert.notEqual(accepted.status, 413, 'the upload route must still accept a large body');
+    });
+
     await t.test('S2: an error response is not cached', async () => {
       // res.json was wrapped before the status was known, so a 4xx body could be
       // stored and then replayed to a caller who would otherwise have succeeded.

@@ -60,8 +60,25 @@ if (IS_PRODUCTION && !CORS_ORIGINS.length) {
 }
 app.use(cors(CORS_ORIGINS.length ? { origin: CORS_ORIGINS, credentials: true } : {}));
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Only book create and update carry files, as base64 strings inside JSON, so
+// only they need the large ceiling. Applying it globally meant every endpoint
+// would buffer up to 50mb before any handler ran.
+//
+// Registered as middleware rather than route handlers on purpose: app.post(path,
+// parser) would add a route layer and change the registered-route list that
+// scripts/route-parity.js guards. The first parser to consume a body wins, so
+// this has to sit above the default one.
+const UPLOAD_BODY_LIMIT = '50mb';
+const DEFAULT_BODY_LIMIT = '1mb';
+const uploadJsonParser = express.json({ limit: UPLOAD_BODY_LIMIT });
+function acceptsUpload(req) {
+  if (req.method === 'POST') return req.path === '/api/books';
+  if (req.method === 'PATCH') return /^\/api\/books\/[^/]+$/.test(req.path);
+  return false;
+}
+app.use((req, res, next) => (acceptsUpload(req) ? uploadJsonParser(req, res, next) : next()));
+app.use(express.json({ limit: DEFAULT_BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: DEFAULT_BODY_LIMIT }));
 app.use(morgan('tiny'));
 
 // Brute-force protection for auth endpoints. Keyed by IP; trust proxy above
@@ -4649,6 +4666,13 @@ app.use((err, req, res, _next) => {
   }
   if (err?.type === 'entity.parse.failed' || err instanceof SyntaxError) {
     return res.status(400).json({ error: 'malformed JSON body' });
+  }
+  // body-parser rejects an oversized body with a 413 error, but nothing mapped
+  // it, so the client saw a generic 500 and no indication of what was wrong.
+  // This was already true of the old global 50mb ceiling; narrowing the limit
+  // makes it reachable often enough to matter.
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'request body too large' });
   }
 
   console.error(`Unhandled error on ${req.method} ${req.originalUrl}:`, err?.stack || err);
