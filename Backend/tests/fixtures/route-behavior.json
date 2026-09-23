@@ -491,8 +491,8 @@
   },
   "GET /api/files/:id": {
     "anon": {
-      "status": 200,
-      "shape": "string"
+      "status": 401,
+      "shape": "{error:string}"
     },
     "student": {
       "status": 200,
@@ -505,8 +505,8 @@
   },
   "GET /api/files/:id/:name": {
     "anon": {
-      "status": 200,
-      "shape": "string"
+      "status": 401,
+      "shape": "{error:string}"
     },
     "student": {
       "status": 200,

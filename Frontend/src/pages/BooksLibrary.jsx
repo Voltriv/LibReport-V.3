@@ -164,6 +164,7 @@ const BooksLibrary = () => {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [appliedFilters, setAppliedFilters] = useState({ q: "", tag: "", withPdf: false });
+  const [openingPdfId, setOpeningPdfId] = useState(null);
 
   const { q, tag, withPdf } = appliedFilters;
 
@@ -304,6 +305,43 @@ const BooksLibrary = () => {
     setHasMore(true);
     load({ reset: items.length === 0 });
   }, [items.length, load]);
+
+  // Book PDFs now require a token, so they cannot be opened by pointing an
+  // anchor at /api/files/<id> -- a plain navigation sends no Authorization
+  // header. Fetch through the authenticated client and hand the browser a blob
+  // instead, the same approach StudentCatalog already uses.
+  const handleOpenPdf = useCallback(async (book) => {
+    if (!book?._id) return;
+    setOpeningPdfId(book._id);
+    try {
+      const response = await api.get(`/books/${book._id}/pdf`, { responseType: "blob" });
+      const blob = new Blob([response.data], {
+        type: response.headers["content-type"] || "application/pdf"
+      });
+      const objectUrl = URL.createObjectURL(blob);
+      const popup = window.open(objectUrl, "_blank", "noopener,noreferrer");
+      if (!popup) {
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+        anchor.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 404) {
+        setItems((prev) =>
+          prev.map((item) => (item._id === book._id ? { ...item, hasPdf: false, pdfUrl: null } : item))
+        );
+        setError("That digital copy is no longer available.");
+      } else {
+        setError(err?.response?.data?.error || "Unable to open the digital copy. Please try again.");
+      }
+    } finally {
+      setOpeningPdfId(null);
+    }
+  }, []);
 
   return (
     <AdminPageLayout
@@ -594,14 +632,15 @@ const BooksLibrary = () => {
                             )}
                           </div>
                           {pdf && (
-                            <a
-                              href={pdf}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-2 rounded-full bg-brand-green px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-brand-greenDark"
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPdf(book)}
+                              disabled={openingPdfId === book._id}
+                              className="inline-flex items-center gap-2 rounded-full bg-brand-green px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-brand-greenDark disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              <IconDocument className="h-3.5 w-3.5" /> Open PDF
-                            </a>
+                              <IconDocument className="h-3.5 w-3.5" />
+                              {openingPdfId === book._id ? "Opening…" : "Open PDF"}
+                            </button>
                           )}
                         </div>
                       </div>

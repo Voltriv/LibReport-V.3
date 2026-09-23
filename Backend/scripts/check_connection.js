@@ -44,6 +44,16 @@ const { resolveMongoConfig } = require('../db/uri');
     console.log('Connection OK');
   } catch (e) {
     console.error('Connection failed:', e.message);
+    // The three Atlas failure modes look alike in the raw driver message; name them.
+    if (/bad auth|authentication failed/i.test(e.message)) {
+      console.error('Hint: the cluster answered, so DNS and the IP access list are fine.');
+      console.error('      MONGO_URI in Backend/.env has a stale or wrong password for this DB user.');
+      console.error('      Reset it in Atlas > Database Access, then update MONGO_URI (percent-encode any @ : / ? # % chars).');
+    } else if (/ServerSelection|ETIMEDOUT|ECONNREFUSED/i.test(e.message)) {
+      console.error('Hint: never reached the cluster. Check the Atlas IP access list for this host, or that the cluster is not paused.');
+    } else if (/ENOTFOUND|querySrv/i.test(e.message)) {
+      console.error('Hint: the SRV record did not resolve. Check the cluster hostname in MONGO_URI.');
+    }
     process.exit(2);
   } finally {
     await client.close().catch(() => {});
