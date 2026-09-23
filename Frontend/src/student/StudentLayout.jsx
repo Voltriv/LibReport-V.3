@@ -6,15 +6,16 @@ import api, { getStoredUser } from "../api";
 import { useStudentPushNotifications } from "../notifications/useStudentPush";
 import ThemeToggle from "../components/ThemeToggle";
 
+// Must stay in sync with the section ids rendered by StudentLanding.jsx.
+// An entry here with no matching id on that page scrolls nowhere.
 const anchorSections = [
   { id: "home", label: "Home" },
-  { id: "about", label: "About" },
-  { id: "sections", label: "Library Sections" },
-  { id: "services", label: "Library Services" },
-
-  { id: "ebooks", label: "Ebook Collection" },
-  { id: "support", label: "Support" }
+  { id: "how", label: "How it works" },
+  { id: "contact", label: "Contact" }
 ];
+
+const footerLinkClass =
+  "block text-sm text-slate-600 transition-colors hover:text-brand-green [[data-theme=dark]_&]:text-gray-400 [[data-theme=dark]_&]:hover:text-brand-green";
 
 const EMPTY_LOAN_STATUS = {
   pending: 0,
@@ -327,9 +328,9 @@ const StudentLayout = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900">
+    <div className="min-h-screen bg-white text-slate-900 [[data-theme=dark]_&]:bg-gray-900 [[data-theme=dark]_&]:text-gray-100">
 
-      <header className="sticky top-0 z-50 border-b border-slate-200/60 bg-white/95 backdrop-blur-md shadow-sm">
+      <header className="sticky top-0 z-50 border-b border-slate-200/60 bg-white/95 backdrop-blur-md shadow-sm [[data-theme=dark]_&]:border-gray-800 [[data-theme=dark]_&]:bg-gray-900/95">
 
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 lg:px-6">
           <div className="flex items-center gap-3">
@@ -360,6 +361,7 @@ const StudentLayout = () => {
                 key={item.id}
                 type="button"
                 onClick={() => onAnchorClick(item.id)}
+                data-testid={`nav-${item.id}`}
                 className={`student-nav-link transition-all duration-200 ${
                   location.pathname === "/student" && activeAnchor === item.id ? "is-active" : ""
                 }`}
@@ -368,12 +370,16 @@ const StudentLayout = () => {
               </button>
             ))}
 
-            <Link
-              to="/student/catalog"
-              className={`student-nav-link transition-all duration-200 ${isCatalog ? "is-active" : ""}`}
-            >
-              Catalog
-            </Link>
+            {/* Catalog is behind RequireStudent — showing it signed out dead-ends. */}
+            {isStudent && (
+              <Link
+                to="/student/catalog"
+                data-testid="nav-catalog"
+                className={`student-nav-link transition-all duration-200 ${isCatalog ? "is-active" : ""}`}
+              >
+                Catalog
+              </Link>
+            )}
             <ThemeToggle className="hidden lg:inline-flex lg:ml-2" hideLabel />
             {isStudent ? (
               <div className="flex items-center gap-2.5">
@@ -495,13 +501,15 @@ const StudentLayout = () => {
               <div className="flex items-center gap-3">
                 <Link
                   to="/student/signin"
-                  className="btn-student-outline btn-pill-sm transition-all duration-200 hover:shadow-md"
+                  data-testid="nav-signin"
+                  className="btn-student-outline btn-pill-sm"
                 >
                   Sign In
                 </Link>
                 <Link
                   to="/student/signup"
-                  className="btn-student-primary btn-pill-sm transition-all duration-200 hover:shadow-lg hover:scale-105"
+                  data-testid="nav-signup"
+                  className="btn-student-primary btn-pill-sm"
                 >
                   Sign Up
                 </Link>
@@ -517,6 +525,7 @@ const StudentLayout = () => {
                   key={item.id}
                   type="button"
                   onClick={() => onAnchorClick(item.id)}
+                  data-testid={`nav-mobile-${item.id}`}
                   className={`student-nav-link w-full rounded-xl px-4 py-3 text-left hover:bg-slate-50 transition-all duration-200 ${
                     location.pathname === "/student" && activeAnchor === item.id ? "is-active bg-brand-green-soft" : ""
                   }`}
@@ -524,15 +533,18 @@ const StudentLayout = () => {
                   {item.label}
                 </button>
               ))}
-              <Link
-                to="/student/catalog"
-                className={`student-nav-link w-full rounded-xl px-4 py-3 hover:bg-slate-50 transition-all duration-200 ${
-                  isCatalog ? "is-active bg-brand-green-soft" : ""
-                }`}
-                onClick={() => setMenuOpen(false)}
-              >
-                Catalog
-              </Link>
+              {isStudent && (
+                <Link
+                  to="/student/catalog"
+                  data-testid="nav-mobile-catalog"
+                  className={`student-nav-link w-full rounded-xl px-4 py-3 hover:bg-slate-50 transition-all duration-200 ${
+                    isCatalog ? "is-active bg-brand-green-soft" : ""
+                  }`}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  Catalog
+                </Link>
+              )}
               <ThemeToggle className="w-full justify-center" />
               {isStudent ? (
                 <>
@@ -586,8 +598,8 @@ const StudentLayout = () => {
         <Outlet />
       </main>
 
-      <footer className="mt-16 border-t border-slate-200/60 bg-gradient-to-r from-white via-slate-50 to-white">
-        <div className="mx-auto max-w-7xl px-4 py-12 text-sm text-slate-600 lg:px-6">
+      <footer className="mt-16 border-t border-slate-200/60 bg-white [[data-theme=dark]_&]:border-gray-800 [[data-theme=dark]_&]:bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 py-12 text-sm text-slate-600 [[data-theme=dark]_&]:text-gray-400 lg:px-6">
           <div className="grid gap-8 md:grid-cols-3">
             <div className="space-y-4">
               <div className="flex items-center gap-3">
@@ -597,33 +609,42 @@ const StudentLayout = () => {
                   <div className="text-xs text-slate-500">Student Portal</div>
                 </div>
               </div>
-              <p className="text-sm text-slate-600">
-                Your gateway to academic resources, digital collections, and library services.
+              <p className="text-sm text-slate-600 [[data-theme=dark]_&]:text-gray-400">
+                Browse the catalog, borrow books, and track your loans.
               </p>
             </div>
-            
+
             <div className="space-y-4">
-              <h3 className="font-semibold text-slate-900">Quick Links</h3>
+              <h3 className="font-semibold text-slate-900 [[data-theme=dark]_&]:text-gray-100">Quick Links</h3>
               <div className="space-y-2">
-                <Link to="/student" className="block text-sm text-slate-600 hover:text-brand-green transition-colors">Home</Link>
-                <Link to="/student/catalog" className="block text-sm text-slate-600 hover:text-brand-green transition-colors">Catalog</Link>
-                <Link to="/student/signin" className="block text-sm text-slate-600 hover:text-brand-green transition-colors">Sign In</Link>
-                <Link to="/student/signup" className="block text-sm text-slate-600 hover:text-brand-green transition-colors">Sign Up</Link>
+                <Link to="/student" className={footerLinkClass}>Home</Link>
+                {/* Signed-out visitors cannot reach these — offer sign-up instead. */}
+                {isStudent ? (
+                  <>
+                    <Link to="/student/catalog" className={footerLinkClass}>Catalog</Link>
+                    <Link to="/student/account" className={footerLinkClass}>My Account</Link>
+                  </>
+                ) : (
+                  <>
+                    <Link to="/student/signin" className={footerLinkClass}>Sign In</Link>
+                    <Link to="/student/signup" className={footerLinkClass}>Sign Up</Link>
+                  </>
+                )}
               </div>
             </div>
-            
+
             <div className="space-y-4">
-              <h3 className="font-semibold text-slate-900">Support</h3>
+              <h3 className="font-semibold text-slate-900 [[data-theme=dark]_&]:text-gray-100">Support</h3>
               <div className="space-y-2">
-                <Link to="/signin" className="block text-sm text-slate-600 hover:text-brand-green transition-colors">Admin Portal</Link>
-                <a href="mailto:library@phinmaed.com" className="block text-sm text-slate-600 hover:text-brand-green transition-colors">Contact Librarians</a>
-                <p className="text-xs text-slate-500">Monday-Friday: 7:30 AM - 6:00 PM</p>
+                <Link to="/signin" className={footerLinkClass}>Admin Portal</Link>
+                <a href="mailto:library@phinmaed.com" className={footerLinkClass}>Contact Librarians</a>
+                <p className="text-xs text-slate-500 [[data-theme=dark]_&]:text-gray-500">Monday–Friday: 7:30 AM – 6:00 PM</p>
               </div>
             </div>
           </div>
-          
-          <div className="mt-8 border-t border-slate-200/60 pt-6">
-            <p className="text-center text-sm text-slate-500">&copy; {new Date().getFullYear()} LibReport Student Portal. All rights reserved.</p>
+
+          <div className="mt-8 border-t border-slate-200/60 pt-6 [[data-theme=dark]_&]:border-gray-800">
+            <p className="text-center text-sm text-slate-500 [[data-theme=dark]_&]:text-gray-500">&copy; {new Date().getFullYear()} LibReport Student Portal. All rights reserved.</p>
           </div>
         </div>
       </footer>

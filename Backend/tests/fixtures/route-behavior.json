@@ -1,0 +1,1066 @@
+{
+  "GET /api/health": {
+    "anon": {
+      "status": 200,
+      "shape": "{db:boolean,noDbMode:boolean,ok:boolean,time:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{db:boolean,noDbMode:boolean,ok:boolean,time:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{db:boolean,noDbMode:boolean,ok:boolean,time:string}"
+    }
+  },
+  "GET /api": {
+    "anon": {
+      "status": 200,
+      "shape": "{auth:{adminSignup:{method:string,path:string},login:{method:string,path:string},signup:{method:string,path:string}},health:string,name:string,ok:boolean,time:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{auth:{adminSignup:{method:string,path:string},login:{method:string,path:string},signup:{method:string,path:string}},health:string,name:string,ok:boolean,time:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{auth:{adminSignup:{method:string,path:string},login:{method:string,path:string},signup:{method:string,path:string}},health:string,name:string,ok:boolean,time:string}"
+    }
+  },
+  "GET /api/": {
+    "anon": {
+      "status": 200,
+      "shape": "{auth:{adminSignup:{method:string,path:string},login:{method:string,path:string},signup:{method:string,path:string}},health:string,name:string,ok:boolean,time:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{auth:{adminSignup:{method:string,path:string},login:{method:string,path:string},signup:{method:string,path:string}},health:string,name:string,ok:boolean,time:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{auth:{adminSignup:{method:string,path:string},login:{method:string,path:string},signup:{method:string,path:string}},health:string,name:string,ok:boolean,time:string}"
+    }
+  },
+  "GET /api/auth/signup": {
+    "anon": {
+      "status": 405,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 405,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 405,
+      "shape": "{error:string}"
+    }
+  },
+  "GET /api/auth/login": {
+    "anon": {
+      "status": 405,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 405,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 405,
+      "shape": "{error:string}"
+    }
+  },
+  "POST /api/auth/signup": {
+    "anon": {
+      "status": 400,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 400,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "POST /api/auth/admin-signup": {
+    "anon": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 403,
+      "shape": "{error:string}"
+    }
+  },
+  "POST /api/auth/login": {
+    "anon": {
+      "status": 200,
+      "shape": "{token:string,user:{department:string,email:string,fullName:string,id:string,role:string,studentId:string}}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{token:string,user:{department:string,email:string,fullName:string,id:string,role:string,studentId:string}}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{token:string,user:{department:string,email:string,fullName:string,id:string,role:string,studentId:string}}"
+    }
+  },
+  "GET /api/auth/me": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{department:string,email:string,fullName:string,id:string,role:string,studentId:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{email:string,fullName:string,id:string,role:string,studentId:string}"
+    }
+  },
+  "GET /api/student/me": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{createdAt:string,department:string,email:string,fullName:string,id:string,role:string,status:string,studentId:string,updatedAt:string}"
+    },
+    "admin": {
+      "status": 404,
+      "shape": "{error:string}"
+    }
+  },
+  "PATCH /api/student/me": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 400,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "GET /api/admins": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "array<{_id:string,adminId:string,createdAt:string,email:string,fullName:string,role:string,status:string}>"
+    }
+  },
+  "POST /api/admins": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "PATCH /api/admins/:id": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{adminId:string,email:string,fullName:string,id:string,role:string,status:string}"
+    }
+  },
+  "DELETE /api/admins/:id": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 204,
+      "shape": "null"
+    }
+  },
+  "GET /api/faculty": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "array<{_id:string,createdAt:string,department:string,email:string,facultyId:string,fullName:string,status:string}>"
+    }
+  },
+  "POST /api/faculty": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "PATCH /api/faculty/:id": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{department:string,email:string,facultyId:string,fullName:string,id:string,status:string}"
+    }
+  },
+  "POST /api/auth/request-reset": {
+    "anon": {
+      "status": 400,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 400,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "POST /api/auth/reset": {
+    "anon": {
+      "status": 400,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 400,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "GET /api/dashboard": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{counts:{activeLoans:number,books:number,disabledUsers:number,faculty:number,overdue:number,students:number,totalUsers:number,users:number,visitsToday:number},topBooks:array<{author:string,bookId:string,borrows:number,title:string}>}"
+    }
+  },
+  "GET /api/heatmap/visits": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<{count:number,dow:number,hour:number}>,since:string}"
+    }
+  },
+  "POST /api/visit/enter": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "POST /api/visit/exit": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "GET /api/visits/recent": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<empty>}"
+    }
+  },
+  "GET /api/tracker/stats": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{active:number,activeLoans:number,inbound:number,outbound:number,overdue:number,range:{hours:number,since:string},staffing:{averageDailyVisits:number,busyDays:array<{avgVisits:number,dow:number,label:string}>,lookbackDays:number,peakHours:array<{avgVisits:number,hour:number,label:string,recommendedStaff:number}>,recommendations:array<string>,totalVisits:number,visitsPerStaff:number,window:{days:number,since:string}},today:{inbound:number,outbound:number,startOfDay:string},totals:{inbound:number,outbound:number}}"
+    }
+  },
+  "GET /api/tracker/logs": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<{borrowedAt:string,dueAt:string,id:string,material:string,returnedAt:null,status:string,user:string}>}"
+    }
+  },
+  "GET /api/books/library": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{items:array<{_id:string,author:string,availableCopies:number,bookCode:string,coverImageMime:string,coverImagePath:string,createdAt:string,department:string,genre:string,hasPdf:boolean,imageUrl:string,isbn:string,pdfUrl:null,tags:array<string>,title:string,totalCopies:number,updatedAt:string}|{_id:string,author:string,availableCopies:number,bookCode:string,coverImagePath:null,createdAt:string,department:string,genre:string,hasPdf:boolean,imageUrl:null,pdfUrl:null,tags:array<empty>,title:string,totalCopies:number,updatedAt:string}>}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<{_id:string,author:string,availableCopies:number,bookCode:string,coverImageMime:string,coverImagePath:string,createdAt:string,department:string,genre:string,hasPdf:boolean,imageUrl:string,isbn:string,pdfUrl:string,tags:array<string>,title:string,totalCopies:number,updatedAt:string}|{_id:string,author:string,availableCopies:number,bookCode:string,coverImagePath:null,createdAt:string,department:string,genre:string,hasPdf:boolean,imageUrl:null,pdfUrl:null,tags:array<empty>,title:string,totalCopies:number,updatedAt:string}>}"
+    }
+  },
+  "GET /api/books/:id/pdf": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "string"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "string"
+    }
+  },
+  "POST /api/books": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "GET /api/books": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "array<{__v:number,_id:string,author:string,availableCopies:number,bookCode:string,coverImageFileId:string,coverImageMime:string,coverImagePath:string,createdAt:string,department:string,genre:string,isbn:string,pdfFileId:string,pdfMime:string,pdfPath:string,tags:array<string>,title:string,totalCopies:number,updatedAt:string}|{__v:number,_id:string,author:string,availableCopies:number,bookCode:string,createdAt:string,department:string,genre:string,tags:array<empty>,title:string,totalCopies:number,updatedAt:string}>"
+    }
+  },
+  "GET /api/books/lookup": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{items:array<{__v:number,_id:string,author:string,availableCopies:number,bookCode:string,coverImageFileId:string,coverImageMime:string,coverImagePath:string,createdAt:string,department:string,genre:string,isbn:string,pdfFileId:string,pdfMime:string,pdfPath:string,tags:array<string>,title:string,totalCopies:number,updatedAt:string}|{__v:number,_id:string,author:string,availableCopies:number,bookCode:string,createdAt:string,department:string,genre:string,tags:array<empty>,title:string,totalCopies:number,updatedAt:string}>}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<{__v:number,_id:string,author:string,availableCopies:number,bookCode:string,coverImageFileId:string,coverImageMime:string,coverImagePath:string,createdAt:string,department:string,genre:string,isbn:string,pdfFileId:string,pdfMime:string,pdfPath:string,tags:array<string>,title:string,totalCopies:number,updatedAt:string}|{__v:number,_id:string,author:string,availableCopies:number,bookCode:string,createdAt:string,department:string,genre:string,tags:array<empty>,title:string,totalCopies:number,updatedAt:string}>}"
+    }
+  },
+  "GET /api/books/:id": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{__v:number,_id:string,author:string,availableCopies:number,bookCode:string,coverImageFileId:string,coverImageMime:string,coverImagePath:string,createdAt:string,department:string,genre:string,isbn:string,pdfFileId:string,pdfMime:string,pdfPath:string,tags:array<string>,title:string,totalCopies:number,updatedAt:string}"
+    }
+  },
+  "PATCH /api/books/:id": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{__v:number,_id:string,author:string,availableCopies:number,bookCode:string,coverImageFileId:string,coverImageMime:string,coverImagePath:string,createdAt:string,department:string,genre:string,isbn:string,pdfFileId:string,pdfMime:string,pdfPath:string,tags:array<string>,title:string,totalCopies:number,updatedAt:string}"
+    }
+  },
+  "DELETE /api/books/:id": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 204,
+      "shape": "null"
+    }
+  },
+  "GET /api/files/:id": {
+    "anon": {
+      "status": 200,
+      "shape": "string"
+    },
+    "student": {
+      "status": 200,
+      "shape": "string"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "string"
+    }
+  },
+  "GET /api/files/:id/:name": {
+    "anon": {
+      "status": 200,
+      "shape": "string"
+    },
+    "student": {
+      "status": 200,
+      "shape": "string"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "string"
+    }
+  },
+  "POST /api/loans/borrow": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "GET /api/student/notifications/public-key": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{enabled:boolean,publicKey:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{enabled:boolean,publicKey:string}"
+    }
+  },
+  "POST /api/student/notifications/subscribe": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 503,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 503,
+      "shape": "{error:string}"
+    }
+  },
+  "DELETE /api/student/notifications/subscribe": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 204,
+      "shape": "null"
+    },
+    "admin": {
+      "status": 204,
+      "shape": "null"
+    }
+  },
+  "POST /api/student/borrow-requests": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 400,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "GET /api/student/borrow-requests": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{items:array<{adminNote:string,book:{author:string,code:string,id:string,title:string},daysRequested:number,dueAt:null,id:string,loanId:null,message:string,processedAt:null,processedBy:null,requestType:string,requestedAt:string,status:string,updatedAt:string,user:{email:string,id:string,name:string,studentId:string}}|{adminNote:string,book:{author:string,code:string,id:string,title:string},daysRequested:number,dueAt:null,id:string,loanId:null,message:string,processedAt:string,processedBy:{email:string,id:string,name:string},requestType:string,requestedAt:string,status:string,updatedAt:string,user:{email:string,id:string,name:string,studentId:string}}|{adminNote:string,book:{author:string,code:string,id:string,title:string},daysRequested:number,dueAt:null,id:string,loanId:string,message:string,processedAt:null,processedBy:null,requestType:string,requestedAt:string,status:string,updatedAt:string,user:{email:string,id:string,name:string,studentId:string}}>}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<empty>}"
+    }
+  },
+  "POST /api/student/borrow": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 400,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "POST /api/student/renew": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 400,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "GET /api/loans/requests": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<{adminNote:string,book:{author:string,code:string,id:string,title:string},daysRequested:number,dueAt:null,id:string,loanId:null,message:string,processedAt:null,processedBy:null,requestType:string,requestedAt:string,status:string,updatedAt:string,user:{email:string,id:string,name:string,studentId:string}}|{adminNote:string,book:{author:string,code:string,id:string,title:string},daysRequested:number,dueAt:null,id:string,loanId:null,message:string,processedAt:string,processedBy:{email:string,id:string,name:string},requestType:string,requestedAt:string,status:string,updatedAt:string,user:{email:string,id:string,name:string,studentId:string}}|{adminNote:string,book:{author:string,code:string,id:string,title:string},daysRequested:number,dueAt:null,id:string,loanId:string,message:string,processedAt:null,processedBy:null,requestType:string,requestedAt:string,status:string,updatedAt:string,user:{email:string,id:string,name:string,studentId:string}}>}"
+    }
+  },
+  "POST /api/loans/requests/:id/approve": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 409,
+      "shape": "{error:string}"
+    }
+  },
+  "POST /api/loans/requests/:id/reject": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{message:string,request:{adminNote:string,book:{author:string,code:string,id:string,title:string},daysRequested:number,dueAt:null,id:string,loanId:null,message:string,processedAt:string,processedBy:{email:string,id:string,name:string},requestType:string,requestedAt:string,status:string,updatedAt:string,user:{email:string,id:string,name:string,studentId:string}}}"
+    }
+  },
+  "POST /api/loans/:id/renewal": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{loan:{bookId:string,borrowedAt:string,dueAt:string,id:string,userId:string},message:string}"
+    }
+  },
+  "POST /api/loans/return": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "POST /api/loans/:id/return": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{__v:number,_id:string,bookId:string,borrowedAt:string,createdAt:string,dueAt:string,overdueNotifiedAt:null,returnedAt:string,updatedAt:string,userId:string}"
+    }
+  },
+  "POST /api/student/return": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 400,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "DELETE /api/loans/:id": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 204,
+      "shape": "null"
+    }
+  },
+  "GET /api/loans/active": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<{bookCode:string,bookId:string,borrowedAt:string,borrowerId:string,borrowerName:string,borrowerStudentId:string,dueAt:string,id:string,statusKey:string,statusLabel:string,title:string}>}"
+    }
+  },
+  "GET /api/loans/history": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<{bookCode:string,bookId:string,borrowedAt:string,borrowerId:string,borrowerName:string,borrowerStudentId:string,dueAt:string,id:string,returnedAt:null,statusKey:string,statusLabel:string,title:string}|{bookCode:string,bookId:string,borrowedAt:string,borrowerId:string,borrowerName:string,borrowerStudentId:string,dueAt:string,id:string,returnedAt:string,statusKey:string,statusLabel:string,title:string}>,limit:number,page:number,status:string,total:number}"
+    }
+  },
+  "GET /api/student/:id/borrowed": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{items:array<{author:string,borrowedAt:string,dueAt:string,title:string}>}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<{author:string,borrowedAt:string,dueAt:string,title:string}>}"
+    }
+  },
+  "GET /api/student/borrowed": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{books:array<{_id:string,author:string,bookCode:string,bookId:string,borrowedAt:string,dueAt:string,title:string}>}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{books:array<empty>}"
+    }
+  },
+  "GET /api/student/overdue-books": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{books:array<{author:string,bookCode:string,bookId:string,borrowedAt:string,daysOverdue:number,dueAt:string,fine:number,id:string,title:string}>}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{books:array<empty>}"
+    }
+  },
+  "GET /api/student/borrowing-history": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{history:array<{author:string,bookCode:string,bookId:string,borrowedAt:string,dueAt:string,id:string,returnedAt:null,status:string,title:string}|{author:string,bookCode:string,bookId:string,borrowedAt:string,dueAt:string,id:string,returnedAt:string,status:string,title:string}>}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{history:array<empty>}"
+    }
+  },
+  "GET /api/student/visit-history": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{page:number,pageSize:number,total:number,totalPages:number,visits:array<{branch:string,durationMinutes:null,enteredAt:string,exitedAt:null,id:string,isActive:boolean}>}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{page:number,pageSize:number,total:number,totalPages:number,visits:array<empty>}"
+    }
+  },
+  "GET /api/reports/top-books": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<{author:string,bookId:string,borrows:number,title:string}>}"
+    }
+  },
+  "GET /api/reports/overdue": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<{borrowedAt:string,dueAt:string,title:string,user:string}>}"
+    }
+  },
+  "GET /api/reports/top-borrowers": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<{activeLoans:number,borrows:number,department:string,email:string,fullName:string,lastBorrowedAt:string,overdueLoans:number,share:number,studentId:string,userId:string}>,since:null,totalBorrows:number,totalLoans:number}"
+    }
+  },
+  "GET /api/reports/genre-trends": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<{activeLoans:number,borrows:number,growth:number,lastBorrowedAt:string,share:number,topic:string}>,previousWindow:{end:string,start:string},since:string,totalBorrows:number,totalLoans:number}"
+    }
+  },
+  "GET /api/reports/underutilized": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<empty>,longestDormantDays:number,neverBorrowed:number,since:string,thresholdDays:number,totalUnderutilized:number}"
+    }
+  },
+  "GET /api/reports/fines": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<{borrowedAt:string,borrower:string,daysOverdue:string,daysOverdueValue:number,dueAt:string,fine:string,fineValue:number,loanId:string,studentId:string,title:string}>,ratePerDay:number,totals:{averageDaysOverdue:number,averageFine:number,outstanding:number,overdueLoans:number}}"
+    }
+  },
+  "GET /api/hours": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 200,
+      "shape": "{branch:string,items:array<{__v:number,_id:string,branch:string,close:string,createdAt:string,dayOfWeek:number,open:string,updatedAt:string}>}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{branch:string,items:array<{__v:number,_id:string,branch:string,close:string,createdAt:string,dayOfWeek:number,open:string,updatedAt:string}>}"
+    }
+  },
+  "PUT /api/hours/:branch/:day": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{__v:number,_id:string,branch:string,close:string,createdAt:string,dayOfWeek:number,open:string,updatedAt:string}"
+    }
+  },
+  "GET /api/admin/users": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "array<{_id:string,createdAt:string,department:string,email:string,fullName:string,role:string,status:string,studentId:string}>"
+    }
+  },
+  "POST /api/admin/users": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "PATCH /api/admin/users/:id/role": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "PATCH /api/admin/users/:id/status": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "PATCH /api/admin/users/:id/department": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "PATCH /api/admin/users/:id/password": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  },
+  "DELETE /api/admin/uploads/pdfs": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{bookResets:number,removed:number}"
+    }
+  },
+  "GET /api/users/lookup": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 400,
+      "shape": "{error:string}"
+    }
+  }
+}

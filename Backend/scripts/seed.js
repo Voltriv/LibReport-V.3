@@ -106,7 +106,7 @@ async function main() {
   const db = client.db(dbName);
 
   // Clean collections for a predictable demo
-  for (const name of ['users','books','loans','visits','hours','faculty']) {
+  for (const name of ['users','books','loans','visits','hours','faculty','borrowrequests','notificationsubscriptions']) {
     await db.collection(name).deleteMany({});
   }
 
@@ -124,6 +124,26 @@ async function main() {
         passwordHash: adminUser.passwordHash
       },
       $setOnInsert: { _id: adminUser._id }
+    },
+    { upsert: true, bypassDocumentValidation: true }
+  );
+
+  // A second admin at the lower privilege level, so the adminRequired vs
+  // elevatedAdminRequired boundary has something to test against. Upserted
+  // rather than wiped, matching the admin above -- admins may be real.
+  const staffAdmin = { _id: new ObjectId(), adminId: '03-2324-032225', fullName: 'Desk Staff', role: 'librarian_staff', email: 'staff@example.com', passwordHash: demoHash };
+  await db.collection('admins').updateOne(
+    { adminId: staffAdmin.adminId },
+    {
+      $set: {
+        adminId: staffAdmin.adminId,
+        fullName: staffAdmin.fullName,
+        email: staffAdmin.email,
+        role: staffAdmin.role,
+        passwordHash: staffAdmin.passwordHash,
+        status: 'active'
+      },
+      $setOnInsert: { _id: staffAdmin._id }
     },
     { upsert: true, bypassDocumentValidation: true }
   );
@@ -201,9 +221,45 @@ async function main() {
       passwordHash: demoHash,
       role: 'faculty',
       status: 'active'
+    },
+    {
+      // Disabled on purpose: accountIsDisabled is checked on every
+      // authenticated request and had no fixture to exercise it.
+      _id: new ObjectId(),
+      studentId: '03-2324-00104',
+      email: 'dana.reyes@example.com',
+      fullName: 'Dana Reyes',
+      barcode: 'LR-000104',
+      passwordHash: demoHash,
+      role: 'student',
+      status: 'disabled',
+      department: 'CITE'
     }
   ];
   await db.collection('users').insertMany(userDocs, { ordered: false, bypassDocumentValidation: true });
+
+  // The faculty collection was wiped every run but never repopulated, so the
+  // three /api/faculty routes always seeded to empty.
+  const facultyDocs = [
+    {
+      _id: new ObjectId(),
+      facultyId: '04-2324-000001',
+      email: 'elena.marquez@example.com',
+      fullName: 'Elena Marquez',
+      department: 'CAHS',
+      passwordHash: demoHash,
+      status: 'active'
+    },
+    {
+      _id: new ObjectId(),
+      facultyId: '04-2324-000002',
+      fullName: 'Noel Aguilar',
+      department: 'CITE',
+      passwordHash: demoHash,
+      status: 'disabled'
+    }
+  ];
+  await db.collection('faculty').insertMany(facultyDocs, { ordered: false, bypassDocumentValidation: true });
 
   const loanDocs = [
     {
@@ -274,6 +330,92 @@ async function main() {
   ];
   await db.collection('visits').insertMany(visitDocs, { ordered: false, bypassDocumentValidation: true });
 
+  // Borrow requests had no fixture at all, which left the 15 student routes and
+  // the request-approval handler seeding against empty collections. createdAt
+  // and updatedAt are written explicitly: this seed goes through the raw driver,
+  // so mongoose timestamps never fire, and the request list sorts on createdAt.
+  const minutesAgo = (n) => new Date(now.getTime() - n * 60 * 1000);
+  const borrowRequestDocs = [
+    {
+      _id: new ObjectId(),
+      userId: userDocs[0]._id,
+      bookId: bookDocs[1]._id,
+      status: 'pending',
+      requestType: 'borrow',
+      daysRequested: 14,
+      message: 'Needed for a term paper.',
+      createdAt: minutesAgo(30),
+      updatedAt: minutesAgo(30)
+    },
+    {
+      _id: new ObjectId(),
+      userId: userDocs[1]._id,
+      bookId: loanDocs[1].bookId,
+      loanId: loanDocs[1]._id,
+      status: 'pending',
+      requestType: 'renewal',
+      daysRequested: 7,
+      message: 'Still reading, please extend.',
+      createdAt: minutesAgo(90),
+      updatedAt: minutesAgo(90)
+    },
+    {
+      _id: new ObjectId(),
+      userId: userDocs[0]._id,
+      bookId: loanDocs[0].bookId,
+      loanId: loanDocs[0]._id,
+      status: 'approved',
+      requestType: 'borrow',
+      daysRequested: 14,
+      processedBy: adminUser._id,
+      processedAt: minutesAgo(60 * 24 * 7),
+      dueAt: loanDocs[0].dueAt,
+      createdAt: minutesAgo(60 * 24 * 7 + 15),
+      updatedAt: minutesAgo(60 * 24 * 7)
+    },
+    {
+      _id: new ObjectId(),
+      userId: userDocs[1]._id,
+      bookId: bookDocs[2]._id,
+      status: 'rejected',
+      requestType: 'borrow',
+      daysRequested: 30,
+      adminNote: 'Reserved for reserve shelf this term.',
+      processedBy: adminUser._id,
+      processedAt: minutesAgo(60 * 24 * 3),
+      createdAt: minutesAgo(60 * 24 * 3 + 20),
+      updatedAt: minutesAgo(60 * 24 * 3)
+    },
+    {
+      _id: new ObjectId(),
+      userId: userDocs[0]._id,
+      bookId: bookDocs[2]._id,
+      status: 'cancelled',
+      requestType: 'borrow',
+      daysRequested: 14,
+      createdAt: minutesAgo(60 * 24 * 5),
+      updatedAt: minutesAgo(60 * 24 * 5 - 10)
+    }
+  ];
+  await db.collection('borrowrequests').insertMany(borrowRequestDocs, { ordered: false, bypassDocumentValidation: true });
+
+  // One push subscription so the notification routes have a row to read and
+  // delete. The endpoint is a placeholder -- web-push is disabled in demo runs.
+  const subscriptionDocs = [
+    {
+      _id: new ObjectId(),
+      userId: userDocs[0]._id,
+      endpoint: 'https://push.example.com/seed/alice',
+      keys: { p256dh: 'seed-p256dh-key', auth: 'seed-auth-key' },
+      userAgent: 'seed-script',
+      lastUsedAt: minutesAgo(120),
+      blockedAt: null,
+      createdAt: minutesAgo(60 * 24),
+      updatedAt: minutesAgo(120)
+    }
+  ];
+  await db.collection('notificationsubscriptions').insertMany(subscriptionDocs, { ordered: false, bypassDocumentValidation: true });
+
   const branch = 'Main';
   const hours = [
     { dayOfWeek: 1, open: '08:00', close: '17:00' },
@@ -288,7 +430,7 @@ async function main() {
   await ensureIndexes(db);
 
   const counts = await Promise.all(
-    ['users','faculty','books','hours','loans','visits'].map(async c => [c, await db.collection(c).countDocuments()])
+    ['users','faculty','books','hours','loans','visits','borrowrequests','notificationsubscriptions'].map(async c => [c, await db.collection(c).countDocuments()])
   );
   console.log('Seed complete:', Object.fromEntries(counts));
 }

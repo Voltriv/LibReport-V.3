@@ -1,91 +1,19 @@
 'use strict';
 
-process.env.NODE_ENV = process.env.NODE_ENV || 'test';
-process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
-const prevNoDb = process.env.NO_DB;
-process.env.NO_DB = 'false';
-const prevUseMemoryDb = process.env.USE_MEMORY_DB;
-process.env.USE_MEMORY_DB = 'true';
+// ./helpers must be required before ../server.js -- it sets JWT_SECRET and the
+// database mode that server.js reads at module scope.
+const {
+  restoreEnv,
+  probeMemoryBinary,
+  resetDatabase,
+  startTestServer,
+  stopTestServer,
+  buildAuthHeader,
+  fetchJson
+} = require('./helpers');
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { once } = require('node:events');
-const jwt = require('jsonwebtoken');
-const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
-
-// On Linux CI the mongodb-memory-server OS detection picks Ubuntu 22.04, which
-// has no published build for the version we want, so pin it to the ubuntu20.04
-// one. This must stay Linux-only: forcing an Ubuntu build on macOS made
-// MongoMemoryServer.create time out ("Instance failed to start within 10000ms")
-// on every run, because no such binary exists for darwin/arm64.
-const IS_LINUX = process.platform === 'linux';
-const prevMemoryOsDist = process.env.MONGO_MEMORY_OS_DIST;
-if (!prevMemoryOsDist && IS_LINUX) {
-  process.env.MONGO_MEMORY_OS_DIST = 'ubuntu';
-}
-const prevMemoryOsRelease = process.env.MONGO_MEMORY_OS_RELEASE;
-if (!prevMemoryOsRelease && IS_LINUX) {
-  process.env.MONGO_MEMORY_OS_RELEASE = '20.04';
-}
-const prevMemoryVersion = process.env.MONGO_MEMORY_VERSION;
-if (!prevMemoryVersion) {
-  // Matches server.js, scripts/seed.js, scripts/indexes.js and scripts/dev-all.js
-  // so every entry point shares one cached mongod binary.
-  process.env.MONGO_MEMORY_VERSION = '7.0.14';
-}
-
-function buildMemoryServerOptionsFromEnv() {
-  const binary = {};
-  if (process.env.MONGO_MEMORY_VERSION) {
-    binary.version = process.env.MONGO_MEMORY_VERSION;
-  }
-  if (process.env.MONGO_MEMORY_DOWNLOAD_DIR) {
-    binary.downloadDir = process.env.MONGO_MEMORY_DOWNLOAD_DIR;
-  }
-  if (process.env.MONGO_MEMORY_SYSTEM_BINARY) {
-    binary.systemBinary = process.env.MONGO_MEMORY_SYSTEM_BINARY;
-  }
-  const dist =
-    process.env.MONGO_MEMORY_OS_DIST ||
-    process.env.MONGO_MEMORY_OS ||
-    process.env.MONGOMS_OS_DIST ||
-    process.env.MONGOMS_OS ||
-    '';
-  const release =
-    process.env.MONGO_MEMORY_OS_RELEASE ||
-    process.env.MONGO_MEMORY_OS_VERSION ||
-    process.env.MONGOMS_OS_RELEASE ||
-    process.env.MONGOMS_OS_VERSION ||
-    process.env.MONGO_MEMORY_OS_FALLBACK_RELEASE ||
-    '';
-  if (dist || release) {
-    binary.os = {
-      dist: (dist || 'ubuntu').toLowerCase(),
-      release: release || '20.04'
-    };
-  }
-  const skipMd5 =
-    String(
-      process.env.MONGO_MEMORY_SKIP_MD5 ||
-        process.env.MONGOMS_SKIP_MD5 ||
-        process.env.MONGO_MEMORY_DISABLE_MD5 ||
-        ''
-    )
-      .toLowerCase()
-      .trim() === 'true';
-  if (skipMd5) {
-    binary.skipMD5 = true;
-    binary.checkMD5 = false;
-  }
-  return { binary };
-}
-
-async function probeMongoMemoryBinary() {
-  const options = buildMemoryServerOptionsFromEnv();
-  const mem = await MongoMemoryServer.create(options);
-  await mem.stop();
-}
 
 let app;
 let buildStaffingRecommendations;
@@ -97,11 +25,10 @@ let analyticsSkipReason = '';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-let server;
 let baseUrl;
 
 test.before(async () => {
-  await probeMongoMemoryBinary().catch((err) => {
+  await probeMemoryBinary().catch((err) => {
     skipAnalyticsIntegration = true;
     const rawMessage = err?.message || err?.stack || String(err);
     analyticsSkipReason = rawMessage.split('\n')[0] || 'MongoDB in-memory binary unavailable';
@@ -115,43 +42,12 @@ test.before(async () => {
     return;
   }
 
-  server = app.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const address = server.address();
-  baseUrl = `http://${address.address}:${address.port}`;
-  await ensureDbReady();
+  baseUrl = await startTestServer(app);
 });
 
 test.after(async () => {
-  if (server) {
-    await new Promise((resolve) => server.close(resolve));
-  }
-  await mongoose.disconnect();
-  if (typeof prevMemoryOsDist === 'undefined') {
-    delete process.env.MONGO_MEMORY_OS_DIST;
-  } else {
-    process.env.MONGO_MEMORY_OS_DIST = prevMemoryOsDist;
-  }
-  if (typeof prevMemoryOsRelease === 'undefined') {
-    delete process.env.MONGO_MEMORY_OS_RELEASE;
-  } else {
-    process.env.MONGO_MEMORY_OS_RELEASE = prevMemoryOsRelease;
-  }
-  if (typeof prevMemoryVersion === 'undefined') {
-    delete process.env.MONGO_MEMORY_VERSION;
-  } else {
-    process.env.MONGO_MEMORY_VERSION = prevMemoryVersion;
-  }
-  if (typeof prevUseMemoryDb === 'undefined') {
-    delete process.env.USE_MEMORY_DB;
-  } else {
-    process.env.USE_MEMORY_DB = prevUseMemoryDb;
-  }
-  if (typeof prevNoDb === 'undefined') {
-    delete process.env.NO_DB;
-  } else {
-    process.env.NO_DB = prevNoDb;
-  }
+  await stopTestServer();
+  restoreEnv();
 });
 
 test('buildStaffingRecommendations highlights peaks', () => {
@@ -183,7 +79,7 @@ test('analytics report endpoints return aggregated data', async (t) => {
     t.skip(analyticsSkipReason || 'MongoDB in-memory binary unavailable');
     return;
   }
-  await resetAndSeed();
+  await resetDatabase();
   const { admin } = await seedAnalyticsData();
   const headers = buildAuthHeader(admin);
   const requestOptions = { headers };
@@ -239,32 +135,8 @@ test('analytics report endpoints return aggregated data', async (t) => {
   assert.equal(finesRes.body.totals.averageDaysOverdue, 3);
 });
 
-async function ensureDbReady() {
-  if (mongoose.connection.readyState === 1) {
-    return;
-  }
-  await new Promise((resolve, reject) => {
-    const onError = (err) => {
-      mongoose.connection.off('open', onOpen);
-      reject(err);
-    };
-    const onOpen = () => {
-      mongoose.connection.off('error', onError);
-      resolve();
-    };
-    mongoose.connection.once('error', onError);
-    mongoose.connection.once('open', onOpen);
-  });
-}
-
-async function resetAndSeed() {
-  const connection = mongoose.connection;
-  if (connection.readyState !== 1) {
-    await ensureDbReady();
-  }
-  await connection.db.dropDatabase();
-}
-
+// Fixture specific to the analytics assertions above. Deliberately not moved
+// into ./helpers: the characterization suite seeds from scripts/seed.js instead.
 async function seedAnalyticsData() {
   const now = new Date();
   const daysAgo = (days) => new Date(now.getTime() - days * DAY_MS);
@@ -294,7 +166,7 @@ async function seedAnalyticsData() {
     }
   ]);
 
-  const [bookSciFi, bookMystery, bookDormant, bookNever] = await Book.create([
+  const [bookSciFi, bookMystery, bookDormant] = await Book.create([
     {
       title: 'Galactic Frontiers',
       author: 'Ivy Stellar',
@@ -377,19 +249,4 @@ async function seedAnalyticsData() {
   ]);
 
   return { admin, borrowerA, borrowerB, now };
-}
-
-function buildAuthHeader(user) {
-  const token = jwt.sign(
-    { sub: String(user._id), email: user.email, role: user.role },
-    process.env.JWT_SECRET,
-    { expiresIn: '1h' }
-  );
-  return { Authorization: `Bearer ${token}` };
-}
-
-async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
-  const body = await response.json();
-  return { status: response.status, body };
 }

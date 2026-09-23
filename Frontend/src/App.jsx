@@ -89,7 +89,8 @@ function DefaultRedirect() {
   if (["librarian", "admin", "librarian_staff"].includes(user?.role))
     return <Navigate to="/dashboard" replace />;
   if (user?.role === "student") return <Navigate to="/student/account" replace />;
-  return <Navigate to="/student/signin" replace />;
+  // Signed-out visitors get the landing page, not a bare sign-in form.
+  return <Navigate to="/student" replace />;
 }
 
 // === Main App ===

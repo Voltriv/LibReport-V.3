@@ -1079,7 +1079,35 @@ if (NO_DB) {
 // --- Micro-cache for read-heavy GET endpoints (15s TTL)
 const microCache = new Map();
 const TTL_MS = 15_000;
-function cacheKey(req) { return `${req.method}:${req.originalUrl}`; }
+const MICRO_CACHE_MAX_ENTRIES = 500;
+
+// This middleware runs before the auth dispatcher, so req.user does not exist
+// yet and identity has to come from the raw header. Without an identity
+// component in the key, one caller's response was served to the next for
+// per-user endpoints like /api/dashboard and /api/reports/* -- including to
+// unauthenticated callers, who received a full admin payload with a 200.
+// The token is hashed rather than used directly so bearer tokens are not held
+// as map keys.
+function cacheIdentity(req) {
+  const [, token] = (req.headers.authorization || '').split(' ');
+  if (!token) return 'anon';
+  return crypto.createHash('sha256').update(token).digest('hex').slice(0, 32);
+}
+function cacheKey(req) { return `${req.method}:${cacheIdentity(req)}:${req.originalUrl}`; }
+
+// Drops expired entries, then oldest-first if still at the cap. A Map iterates in
+// insertion order, so the first key is the oldest. Without this the cache grew
+// without bound: one entry per distinct query string, never released.
+function pruneMicroCache(now) {
+  for (const [key, entry] of microCache) {
+    if (entry.expires <= now) microCache.delete(key);
+  }
+  while (microCache.size >= MICRO_CACHE_MAX_ENTRIES) {
+    const oldest = microCache.keys().next();
+    if (oldest.done) break;
+    microCache.delete(oldest.value);
+  }
+}
 function cacheable(path) {
   return (
     path.startsWith('/api/books/library') ||
@@ -1102,10 +1130,17 @@ app.use((req, res, next) => {
   }
   const json = res.json.bind(res);
   res.json = (body) => {
-    try {
-      microCache.set(key, { body, status: res.statusCode || 200, expires: now + TTL_MS });
-      res.set('X-Micro-Cache', 'MISS');
-    } catch {}
+    const status = res.statusCode || 200;
+    // Successful responses only. res.json was previously wrapped without a status
+    // check, so a rejection was cached and then replayed -- an admin could be
+    // served the 403 a student had just received.
+    if (status >= 200 && status < 300) {
+      try {
+        pruneMicroCache(now);
+        microCache.set(key, { body, status, expires: now + TTL_MS });
+        res.set('X-Micro-Cache', 'MISS');
+      } catch {}
+    }
     return json(body);
   };
   next();
@@ -1119,6 +1154,9 @@ app.use((req, res, next) => {
     req.path === '/api/' ||
     req.path === '/api/health' ||
     req.path.startsWith('/api/auth/') ||
+    // Not public: the file route enforces its own check, because whether a token
+    // is required depends on the stored content type (cover image vs book PDF)
+    // and that is only knowable after a database lookup.
     req.path === '/api/files' ||
     req.path.startsWith('/api/files/');
   if (open) return next();
@@ -1163,21 +1201,31 @@ async function accountIsDisabled(sub) {
   return normalizeUserStatus(found.status) === 'disabled';
 }
 
-function authRequired(req, res, next) {
+// Resolves the bearer token without touching the response, so a route that needs
+// a verdict rather than a middleware short-circuit can share one implementation
+// with authRequired. GET /api/files/:id needs exactly that: cover images must
+// stay readable without a token, book PDFs must not.
+async function resolveAuth(req) {
+  const header = req.headers.authorization || '';
+  const [, token] = header.split(' ');
+  if (!token) return { ok: false, status: 401, message: 'missing token' };
   let claims;
   try {
-    const header = req.headers.authorization || '';
-    const [, token] = header.split(' ');
-    if (!token) return res.status(401).json({ error: 'missing token' });
     claims = jwt.verify(token, JWT_SECRET);
   } catch {
-    return res.status(401).json({ error: 'invalid token' });
+    return { ok: false, status: 401, message: 'invalid token' };
   }
+  if (await accountIsDisabled(claims.sub)) {
+    return { ok: false, status: 401, message: 'Account is disabled', claims };
+  }
+  return { ok: true, claims };
+}
 
-  req.user = claims;
-  accountIsDisabled(claims.sub)
-    .then((disabled) => {
-      if (disabled) return res.status(401).json({ error: 'Account is disabled' });
+function authRequired(req, res, next) {
+  resolveAuth(req)
+    .then((result) => {
+      if (result.claims) req.user = result.claims;
+      if (!result.ok) return res.status(result.status).json({ error: result.message });
       return next();
     })
     .catch(next);
@@ -2586,6 +2634,17 @@ app.get(['/api/files/:id', '/api/files/:id/:name'], async (req, res) => {
     if (!fileDoc) return res.status(404).json({ error: 'File not found' });
 
     const contentType = fileDoc.contentType || fileDoc.metadata?.mime || 'application/octet-stream';
+
+    // Cover images render in <img> tags, which cannot carry an Authorization
+    // header, so they stay readable without one. Everything else in this bucket
+    // is book content -- the same PDFs that GET /api/books/:id/pdf gates -- and
+    // requires a valid token. The global dispatcher lets /api/files/* through
+    // precisely so this check can see the content type first.
+    if (!contentType.startsWith('image/')) {
+      const auth = await resolveAuth(req);
+      if (!auth.ok) return res.status(auth.status).json({ error: auth.message });
+    }
+
     res.set('Content-Type', contentType);
 
     const download = String(req.query.download || '').toLowerCase();

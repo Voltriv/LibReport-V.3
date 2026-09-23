@@ -1,0 +1,724 @@
+{
+  "capturedWith": {
+    "express": "5.1.0",
+    "node": "v22.12.0"
+  },
+  "routeCount": 74,
+  "endpointCount": 76,
+  "routes": [
+    {
+      "order": 0,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/health"
+      ]
+    },
+    {
+      "order": 1,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api",
+        "/api/"
+      ]
+    },
+    {
+      "order": 2,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/auth/signup"
+      ]
+    },
+    {
+      "order": 3,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/auth/login"
+      ]
+    },
+    {
+      "order": 4,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/auth/signup"
+      ]
+    },
+    {
+      "order": 5,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/auth/admin-signup"
+      ]
+    },
+    {
+      "order": 6,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/auth/login"
+      ]
+    },
+    {
+      "order": 7,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/auth/me"
+      ]
+    },
+    {
+      "order": 8,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/student/me"
+      ]
+    },
+    {
+      "order": 9,
+      "methods": [
+        "PATCH"
+      ],
+      "paths": [
+        "/api/student/me"
+      ]
+    },
+    {
+      "order": 10,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/admins"
+      ]
+    },
+    {
+      "order": 11,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/admins"
+      ]
+    },
+    {
+      "order": 12,
+      "methods": [
+        "PATCH"
+      ],
+      "paths": [
+        "/api/admins/:id"
+      ]
+    },
+    {
+      "order": 13,
+      "methods": [
+        "DELETE"
+      ],
+      "paths": [
+        "/api/admins/:id"
+      ]
+    },
+    {
+      "order": 14,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/faculty"
+      ]
+    },
+    {
+      "order": 15,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/faculty"
+      ]
+    },
+    {
+      "order": 16,
+      "methods": [
+        "PATCH"
+      ],
+      "paths": [
+        "/api/faculty/:id"
+      ]
+    },
+    {
+      "order": 17,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/auth/request-reset"
+      ]
+    },
+    {
+      "order": 18,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/auth/reset"
+      ]
+    },
+    {
+      "order": 19,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/dashboard"
+      ]
+    },
+    {
+      "order": 20,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/heatmap/visits"
+      ]
+    },
+    {
+      "order": 21,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/visit/enter"
+      ]
+    },
+    {
+      "order": 22,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/visit/exit"
+      ]
+    },
+    {
+      "order": 23,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/visits/recent"
+      ]
+    },
+    {
+      "order": 24,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/tracker/stats"
+      ]
+    },
+    {
+      "order": 25,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/tracker/logs"
+      ]
+    },
+    {
+      "order": 26,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/books/library"
+      ]
+    },
+    {
+      "order": 27,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/books/:id/pdf"
+      ]
+    },
+    {
+      "order": 28,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/books"
+      ]
+    },
+    {
+      "order": 29,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/books"
+      ]
+    },
+    {
+      "order": 30,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/books/lookup"
+      ]
+    },
+    {
+      "order": 31,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/books/:id"
+      ]
+    },
+    {
+      "order": 32,
+      "methods": [
+        "PATCH"
+      ],
+      "paths": [
+        "/api/books/:id"
+      ]
+    },
+    {
+      "order": 33,
+      "methods": [
+        "DELETE"
+      ],
+      "paths": [
+        "/api/books/:id"
+      ]
+    },
+    {
+      "order": 34,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/files/:id",
+        "/api/files/:id/:name"
+      ]
+    },
+    {
+      "order": 35,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/loans/borrow"
+      ]
+    },
+    {
+      "order": 36,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/student/notifications/public-key"
+      ]
+    },
+    {
+      "order": 37,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/student/notifications/subscribe"
+      ]
+    },
+    {
+      "order": 38,
+      "methods": [
+        "DELETE"
+      ],
+      "paths": [
+        "/api/student/notifications/subscribe"
+      ]
+    },
+    {
+      "order": 39,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/student/borrow-requests"
+      ]
+    },
+    {
+      "order": 40,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/student/borrow-requests"
+      ]
+    },
+    {
+      "order": 41,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/student/borrow"
+      ]
+    },
+    {
+      "order": 42,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/student/renew"
+      ]
+    },
+    {
+      "order": 43,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/loans/requests"
+      ]
+    },
+    {
+      "order": 44,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/loans/requests/:id/approve"
+      ]
+    },
+    {
+      "order": 45,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/loans/requests/:id/reject"
+      ]
+    },
+    {
+      "order": 46,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/loans/:id/renewal"
+      ]
+    },
+    {
+      "order": 47,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/loans/return"
+      ]
+    },
+    {
+      "order": 48,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/loans/:id/return"
+      ]
+    },
+    {
+      "order": 49,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/student/return"
+      ]
+    },
+    {
+      "order": 50,
+      "methods": [
+        "DELETE"
+      ],
+      "paths": [
+        "/api/loans/:id"
+      ]
+    },
+    {
+      "order": 51,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/loans/active"
+      ]
+    },
+    {
+      "order": 52,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/loans/history"
+      ]
+    },
+    {
+      "order": 53,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/student/:id/borrowed"
+      ]
+    },
+    {
+      "order": 54,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/student/borrowed"
+      ]
+    },
+    {
+      "order": 55,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/student/overdue-books"
+      ]
+    },
+    {
+      "order": 56,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/student/borrowing-history"
+      ]
+    },
+    {
+      "order": 57,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/student/visit-history"
+      ]
+    },
+    {
+      "order": 58,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/reports/top-books"
+      ]
+    },
+    {
+      "order": 59,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/reports/overdue"
+      ]
+    },
+    {
+      "order": 60,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/reports/top-borrowers"
+      ]
+    },
+    {
+      "order": 61,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/reports/genre-trends"
+      ]
+    },
+    {
+      "order": 62,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/reports/underutilized"
+      ]
+    },
+    {
+      "order": 63,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/reports/fines"
+      ]
+    },
+    {
+      "order": 64,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/hours"
+      ]
+    },
+    {
+      "order": 65,
+      "methods": [
+        "PUT"
+      ],
+      "paths": [
+        "/api/hours/:branch/:day"
+      ]
+    },
+    {
+      "order": 66,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/admin/users"
+      ]
+    },
+    {
+      "order": 67,
+      "methods": [
+        "POST"
+      ],
+      "paths": [
+        "/api/admin/users"
+      ]
+    },
+    {
+      "order": 68,
+      "methods": [
+        "PATCH"
+      ],
+      "paths": [
+        "/api/admin/users/:id/role"
+      ]
+    },
+    {
+      "order": 69,
+      "methods": [
+        "PATCH"
+      ],
+      "paths": [
+        "/api/admin/users/:id/status"
+      ]
+    },
+    {
+      "order": 70,
+      "methods": [
+        "PATCH"
+      ],
+      "paths": [
+        "/api/admin/users/:id/department"
+      ]
+    },
+    {
+      "order": 71,
+      "methods": [
+        "PATCH"
+      ],
+      "paths": [
+        "/api/admin/users/:id/password"
+      ]
+    },
+    {
+      "order": 72,
+      "methods": [
+        "DELETE"
+      ],
+      "paths": [
+        "/api/admin/uploads/pdfs"
+      ]
+    },
+    {
+      "order": 73,
+      "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/users/lookup"
+      ]
+    }
+  ],
+  "middleware": [
+    {
+      "order": 0,
+      "name": "compression"
+    },
+    {
+      "order": 1,
+      "name": "helmetMiddleware"
+    },
+    {
+      "order": 2,
+      "name": "corsMiddleware"
+    },
+    {
+      "order": 3,
+      "name": "jsonParser"
+    },
+    {
+      "order": 4,
+      "name": "urlencodedParser"
+    },
+    {
+      "order": 5,
+      "name": "logger"
+    },
+    {
+      "order": 6,
+      "name": "serveStatic"
+    },
+    {
+      "order": 7,
+      "name": "<anonymous>"
+    },
+    {
+      "order": 8,
+      "name": "<anonymous>"
+    },
+    {
+      "order": 9,
+      "name": "<anonymous>"
+    },
+    {
+      "order": 10,
+      "name": "<anonymous>"
+    }
+  ]
+}
