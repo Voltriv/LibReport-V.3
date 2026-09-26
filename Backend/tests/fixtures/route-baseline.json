@@ -3,8 +3,8 @@
     "express": "5.1.0",
     "node": "v22.12.0"
   },
-  "routeCount": 74,
-  "endpointCount": 76,
+  "routeCount": 75,
+  "endpointCount": 77,
   "routes": [
     {
       "order": 0,
@@ -659,6 +659,15 @@
     {
       "order": 72,
       "methods": [
+        "GET"
+      ],
+      "paths": [
+        "/api/admin/password-resets"
+      ]
+    },
+    {
+      "order": 73,
+      "methods": [
         "DELETE"
       ],
       "paths": [
@@ -666,7 +675,7 @@
       ]
     },
     {
-      "order": 73,
+      "order": 74,
       "methods": [
         "GET"
       ],
@@ -690,19 +699,19 @@
     },
     {
       "order": 3,
-      "name": "jsonParser"
+      "name": "<anonymous>"
     },
     {
       "order": 4,
-      "name": "urlencodedParser"
+      "name": "jsonParser"
     },
     {
       "order": 5,
-      "name": "logger"
+      "name": "urlencodedParser"
     },
     {
       "order": 6,
-      "name": "serveStatic"
+      "name": "logger"
     },
     {
       "order": 7,
@@ -718,7 +727,23 @@
     },
     {
       "order": 10,
+      "name": "serveStatic"
+    },
+    {
+      "order": 11,
       "name": "<anonymous>"
+    },
+    {
+      "order": 12,
+      "name": "microCacheMiddleware"
+    },
+    {
+      "order": 13,
+      "name": "authGate"
+    },
+    {
+      "order": 14,
+      "name": "errorHandler"
     }
   ]
 }

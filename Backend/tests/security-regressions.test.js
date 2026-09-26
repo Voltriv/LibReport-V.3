@@ -124,6 +124,104 @@ test('security regressions', async (t) => {
       assert.equal(lookups, 2, `expected one identity resolution (2 lookups), saw ${lookups}`);
     });
 
+    await t.test('S6+S7: request-reset never returns a token and never confirms an address', async () => {
+      // The old handler answered 200 { ok, uid, token, expiresAt } for a known address
+      // and 404 { error } for an unknown one. The token in that body is a full
+      // account-takeover primitive for any address the caller names (S7), and the
+      // 404/200 split confirms which addresses have accounts (S6).
+      const requestReset = (email) =>
+        fetchJson(`${baseUrl}/api/auth/request-reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+
+      const known = await requestReset('student@test.local');
+      const unknown = await requestReset('definitely-not-registered@test.local');
+
+      assert.equal(known.status, 202);
+      assert.equal(unknown.status, 202, 'an unknown address must not be distinguishable');
+      assert.deepEqual(known.body, unknown.body, 'both responses must be identical');
+
+      for (const [label, res] of [['known', known], ['unknown', unknown]]) {
+        const serialized = JSON.stringify(res.body || {});
+        assert.ok(!/token/i.test(serialized), `${label}: no token may appear in the body`);
+        assert.ok(!/uid/i.test(serialized), `${label}: no user id may appear in the body`);
+      }
+    });
+
+    await t.test('S6+S7: the reset queue is visible to elevated admins only', async () => {
+      // With the token undisclosed, this listing is how a request reaches a human.
+      await fetchJson(`${baseUrl}/api/auth/request-reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'student@test.local' })
+      });
+
+      const asStudent = await fetchJson(`${baseUrl}/api/admin/password-resets`, { headers: studentHeaders });
+      assert.equal(asStudent.status, 403);
+
+      const asAdmin = await fetchJson(`${baseUrl}/api/admin/password-resets`, { headers: adminHeaders });
+      assert.equal(asAdmin.status, 200);
+      assert.ok(Array.isArray(asAdmin.body?.items));
+      const entry = asAdmin.body.items.find((item) => item.email === 'student@test.local');
+      assert.ok(entry, 'the pending request must be listed for an admin to action');
+      assert.ok(!/token/i.test(JSON.stringify(entry)), 'not even the admin listing exposes a token');
+    });
+
+    await t.test('N10: an admin setting a password actually changes the credential', async () => {
+      // user.password was assigned where the schema defines passwordHash. Mongoose
+      // drops unknown paths under strict mode, so this endpoint reported
+      // "Password updated successfully." while the credential was untouched: the old
+      // password kept working and the new one never did.
+      const { User } = require('../models');
+      const target = await User.findOne({ email: 'student@test.local' }).lean();
+
+      const updated = await fetchJson(`${baseUrl}/api/admin/users/${target._id}/password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...adminHeaders },
+        body: JSON.stringify({ password: 'ReplacementPass123' })
+      });
+      assert.equal(updated.status, 200);
+
+      const login = (password) =>
+        fetchJson(`${baseUrl}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ studentId: target.studentId, password })
+        });
+
+      const withNew = await login('ReplacementPass123');
+      assert.equal(withNew.status, 200, 'the new password must work');
+
+      const withOld = await login('Password123');
+      assert.equal(withOld.status, 401, 'the old password must stop working');
+
+      // Answering the request is what clears it from the queue.
+      const queue = await fetchJson(`${baseUrl}/api/admin/password-resets`, { headers: adminHeaders });
+      const still = (queue.body?.items || []).find((item) => item.email === 'student@test.local');
+      assert.equal(still, undefined, 'setting the password must resolve the pending request');
+    });
+
+    await t.test('N5: an account with no stored hash fails closed with 401', async () => {
+      // bcrypt.compare throws on an undefined hash, which surfaced as a 500 and so
+      // distinguished "exists but has no password" from "does not exist".
+      const { Faculty } = require('../models');
+      await Faculty.collection.insertOne({
+        facultyId: '04-2324-999999',
+        email: 'nohash@test.local',
+        fullName: 'No Hash',
+        status: 'active'
+      });
+
+      const attempt = await fetchJson(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: '04-2324-999999', password: 'anything-at-all' })
+      });
+      assert.equal(attempt.status, 401);
+      assert.equal(attempt.body?.error, 'invalid credentials');
+    });
     await t.test('S3: password reset endpoints are rate limited', async () => {
       // The limiter allows 10 per 15 minutes; the 11th must be rejected. Before
       // this, the reset token -- 32 hex characters -- could be guessed without
@@ -161,6 +259,7 @@ test('security regressions', async (t) => {
       const accepted = await post('/api/books', { title: 'Big', author: 'A', notes: padding });
       assert.notEqual(accepted.status, 413, 'the upload route must still accept a large body');
     });
+
 
     await t.test('S2: an error response is not cached', async () => {
       // res.json was wrapped before the status was known, so a 4xx body could be

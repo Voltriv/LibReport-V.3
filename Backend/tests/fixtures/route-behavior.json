@@ -1035,6 +1035,20 @@
       "shape": "{error:string}"
     }
   },
+  "GET /api/admin/password-resets": {
+    "anon": {
+      "status": 401,
+      "shape": "{error:string}"
+    },
+    "student": {
+      "status": 403,
+      "shape": "{error:string}"
+    },
+    "admin": {
+      "status": 200,
+      "shape": "{items:array<empty>}"
+    }
+  },
   "DELETE /api/admin/uploads/pdfs": {
     "anon": {
       "status": 401,

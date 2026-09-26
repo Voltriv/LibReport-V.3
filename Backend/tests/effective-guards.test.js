@@ -28,7 +28,7 @@
 //   any-auth           any valid token, any role
 //   admin              admin / librarian / librarian_staff
 //   elevated           admin / librarian only -- librarian_staff excluded
-//   owner-or-elevated  the addressed user themselves, or admin / librarian
+//   owner-or-admin     the addressed user themselves, or any admin-class role
 //
 // "allow" asserts only that authorization did not reject: the status is neither
 // 401 nor 403. A 400 from an empty body, or a 404 because an earlier principal
@@ -110,7 +110,7 @@ const POLICY = {
   "DELETE /api/loans/:id": "admin",
   "GET /api/loans/active": "admin",
   "GET /api/loans/history": "admin",
-  "GET /api/student/:id/borrowed": "owner-or-elevated",
+  "GET /api/student/:id/borrowed": "owner-or-admin",
   "GET /api/student/borrowed": "any-auth",
   "GET /api/student/overdue-books": "any-auth",
   "GET /api/student/borrowing-history": "any-auth",
@@ -130,6 +130,9 @@ const POLICY = {
   "PATCH /api/admin/users/:id/department": "admin",
   "PATCH /api/admin/users/:id/password": "admin",
   "DELETE /api/admin/uploads/pdfs": "admin",
+ // Route-level elevatedAdminRequired, stricter than the gate's adminRequired for
+ // /api/admin/*: a reset queue names accounts, so librarian_staff is excluded.
+ "GET /api/admin/password-resets": "elevated",
   "GET /api/users/lookup": "admin",
 };
 
@@ -147,12 +150,11 @@ const EXPECTED = {
   'any-auth': { anon: 401, student: 'allow', staff: 'allow', admin: 'allow' },
   admin: { anon: 401, student: 403, staff: 'allow', admin: 'allow' },
   elevated: { anon: 401, student: 403, staff: 403, admin: 'allow' },
-  // GET /api/student/:id/borrowed checks ownership inside the handler and counts
-  // only 'admin' and 'librarian' as privileged, so librarian_staff is refused
-  // here while it passes every other admin-class route. Recorded as finding N8;
-  // when that is aligned with adminRequired's role set, this entry becomes
-  // 'owner-or-admin' and staff flips to allow.
-  'owner-or-elevated': { anon: 401, student: 'allow', staff: 403, admin: 'allow' }
+  // GET /api/student/:id/borrowed checks ownership inside the handler: the
+  // addressed user themselves, or any admin-class role. librarian_staff used to be
+  // excluded here while passing every other admin-class route, which produced a
+  // 403 that looked arbitrary (finding N8, fixed) -- hence 'allow' for staff now.
+  'owner-or-admin': { anon: 401, student: 'allow', staff: 'allow', admin: 'allow' }
 };
 
 let app;

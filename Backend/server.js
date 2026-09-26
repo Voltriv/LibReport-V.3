@@ -671,7 +671,10 @@ app.post('/api/auth/signup', authRateLimiter, async (req, res) => {
 app.post('/api/auth/admin-signup', authRateLimiter, async (req, res) => {
   try {
     const allow = String(process.env.ALLOW_ADMIN_SIGNUP || '').toLowerCase() === 'true';
-    const existing = await Admin.estimatedDocumentCount();
+    // countDocuments, not estimatedDocumentCount: the estimate reads collection
+    // metadata and can report a stale 0 while admins exist, which would re-open
+    // self-service librarian creation to anyone (finding N6).
+    const existing = await Admin.countDocuments();
     if (!allow && existing > 0) return res.status(403).json({ error: 'Admin signup is disabled' });
 
     const { adminId, fullName, email, password, confirmPassword } = req.body || {};
@@ -763,7 +766,12 @@ app.post('/api/auth/login', authRateLimiter, async (req, res) => {
 
   if (!account) return res.status(401).json({ error: 'invalid credentials' });
 
-  const ok = await bcrypt.compare(String(password), account.passwordHash);
+  // An account with no stored hash must fail closed. bcrypt.compare throws on an
+  // undefined hash, which surfaced as a 500 and told the caller the account
+  // exists (finding N5).
+  const ok = typeof account.passwordHash === 'string' && account.passwordHash
+    ? await bcrypt.compare(String(password), account.passwordHash)
+    : false;
   if (!ok) return res.status(401).json({ error: 'invalid credentials' });
 
   // Checked after the password so a wrong password on a disabled account still
@@ -1151,17 +1159,35 @@ app.patch('/api/faculty/:id', adminRequired, async (req, res) => {
 });
 
 // Request password reset (returns token for demo; normally emailed)
+// Records a reset request for an admin to action. Deliberately says nothing
+// about whether the address exists.
+//
+// This endpoint used to return { ok, uid, token, expiresAt } -- a valid reset
+// token for any address a caller named, which is a full account-takeover
+// primitive (S7) -- and to answer 404 for unknown addresses, confirming which
+// emails have accounts (S6). The two could not be fixed separately: identical
+// responses are impossible while one of them carries the token.
+//
+// There is no mail transport in this project, so the token is not sent anywhere
+// either: it is never disclosed at all. The record exists purely as a queue
+// entry that GET /api/admin/password-resets shows, and an admin resolves it with
+// PATCH /api/admin/users/:id/password. A token hash is still written because the
+// schema requires one, and because POST /api/auth/reset stays able to consume a
+// token if one is ever issued by another route.
 app.post('/api/auth/request-reset', passwordResetRateLimiter, async (req, res) => {
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: 'email required' });
+
   const user = await User.findOne({ email: String(email).toLowerCase() });
-  if (!user) return res.status(404).json({ error: 'user not found' });
-  const token = crypto.randomBytes(16).toString('hex');
-  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
-  await PasswordReset.create({ userId: user._id, tokenHash, expiresAt });
-  // For demo we return the token; in production, send by email.
-  return res.json({ ok: true, uid: String(user._id), token, expiresAt });
+  if (user) {
+    const token = crypto.randomBytes(16).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    await PasswordReset.create({ userId: user._id, tokenHash, expiresAt });
+  }
+
+  // One response either way, and no token in it.
+  return res.status(202).json({ ok: true });
 });
 
 // Perform password reset
@@ -2813,7 +2839,11 @@ app.get('/api/student/:id/borrowed', authRequired, async (req, res) => {
 
   const requesterRole = req.user?.role;
   const requesterId = String(req.user?.sub || '');
-  const isAdmin = requesterRole === 'admin' || requesterRole === 'librarian';
+  // Matches adminRequired's role set. librarian_staff passes every other
+  // admin-class route, so excluding it only here produced a 403 that looked
+  // arbitrary (finding N8).
+  const isAdmin =
+    requesterRole === 'admin' || requesterRole === 'librarian' || requesterRole === 'librarian_staff';
   if (!isAdmin && requesterId !== String(userId)) {
     return res.status(403).json({ error: 'forbidden' });
   }
@@ -3831,10 +3861,48 @@ app.patch('/api/admin/users/:id/password', adminRequired, async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ error: 'Not found' });
 
-  user.password = await bcrypt.hash(rawPassword, 10);
+  user.passwordHash = await bcrypt.hash(rawPassword, 10);
   await user.save();
 
+  // Setting a password by hand is how an admin answers a reset request, so
+  // clear any outstanding ones rather than leaving them on the queue.
+  await PasswordReset.updateMany(
+    { userId: user._id, used: false },
+    { $set: { used: true, usedAt: new Date() } }
+  );
+
   res.json({ message: 'Password updated successfully.' });
+});
+
+// The admin half of the password reset flow (S6/S7). POST /api/auth/request-reset
+// no longer tells the caller anything, so this is where a request becomes visible:
+// an elevated admin sees who asked, and answers with
+// PATCH /api/admin/users/:id/password, which also clears the entry.
+//
+// No token is returned here either. Nothing in the system can recover one -- only
+// its hash is stored -- which is the point: there is no path by which requesting a
+// reset yields a credential to anybody.
+app.get('/api/admin/password-resets', elevatedAdminRequired, async (_req, res) => {
+  const pending = await PasswordReset.aggregate([
+    { $match: { used: false, expiresAt: { $gt: new Date() } } },
+    { $sort: { createdAt: -1 } },
+    { $limit: 200 },
+    { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user' } },
+    { $unwind: '$user' },
+    {
+      $project: {
+        _id: 0,
+        userId: { $toString: '$userId' },
+        email: '$user.email',
+        fullName: '$user.fullName',
+        studentId: '$user.studentId',
+        requestedAt: '$createdAt',
+        expiresAt: 1
+      }
+    }
+  ]);
+
+  res.json({ items: pending });
 });
 
 app.delete('/api/admin/uploads/pdfs', adminRequired, async (req, res) => {
