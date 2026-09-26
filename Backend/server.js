@@ -103,10 +103,15 @@ const passwordResetRateLimiter = rateLimit({
   message: { error: 'Too many password reset attempts. Please try again later.' }
 });
 
+// Legacy only: uploaded binaries live in the GridFS `uploads` bucket and are
+// served by GET /api/files/:id. This path is kept so pre-GridFS files still
+// resolve and can still be unlinked.
+//
+// No longer created at import time. Requiring this module used to mkdir as a side
+// effect, before anything had decided the process needed it -- and nothing writes
+// here any more: express.static answers next() when the directory is absent, and
+// the one remaining use is an unlink already wrapped in try/catch.
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
 app.use('/uploads', express.static(UPLOAD_DIR));
 
 const MIME_EXTENSIONS = {
@@ -751,11 +756,18 @@ mongoose.connection.on('disconnected', () => {
   setUploadBucket(null);
 });
 
+// Held on a module binding, not a local: the mongod it wraps is a child process,
+// and until it is stopped the event loop never empties. Because the previous
+// local const was unreachable from outside this function, nothing could stop it
+// and `npm test` never terminated -- the tests passed in ~145ms and then the
+// runner hung until its own timeout killed it and reported the file as failed.
+let memoryServer = null;
+
 async function startMemoryDatabase(reason) {
   try {
     const { MongoMemoryServer } = require('mongodb-memory-server');
-    const mem = await MongoMemoryServer.create(buildMemoryServerOptions());
-    MONGO_URI = mem.getUri();
+    memoryServer = await MongoMemoryServer.create(buildMemoryServerOptions());
+    MONGO_URI = memoryServer.getUri();
     await mongoose.connect(MONGO_URI, { dbName: DB_NAME, serverSelectionTimeoutMS: 10000, family: 4 });
     initUploadBucket();
     DB_READY = true;
@@ -772,7 +784,11 @@ async function startMemoryDatabase(reason) {
       'Tips: specify MONGO_MEMORY_VERSION, MONGO_MEMORY_OS_RELEASE (e.g. 20.04), or MONGO_MEMORY_SYSTEM_BINARY to use an existing mongod binary. '
         + 'Set USE_MEMORY_DB=false to skip the in-memory fallback.'
     );
-    process.exit(1);
+    // Rethrow rather than exit. Killing the process from inside an async helper
+    // made this function untestable -- any test of the failure path would take the
+    // runner down with it. The connectMongo().catch() below still exits, so a real
+    // server fails exactly as before.
+    throw err;
   }
 }
 
@@ -810,7 +826,7 @@ async function connectMongo() {
       const label = code || err?.message || 'unknown error';
       await startMemoryDatabase(label);
     } else {
-      process.exit(1);
+      throw err;
     }
   }
 }
@@ -1009,7 +1025,7 @@ async function ensureDefaultAdmin() {
         + 'Set ADMIN_EMAIL, ADMIN_ID and a strong ADMIN_PASSWORD in Backend/.env, or create the first '
         + 'admin via POST /api/auth/admin-signup with ALLOW_ADMIN_SIGNUP=true (temporarily).'
     );
-    process.exit(1);
+    throw new Error('ADMIN_PASSWORD is required to bootstrap a default admin in production');
   }
 
   const rawEmail = process.env.ADMIN_EMAIL || 'admin@example.com';
@@ -4679,6 +4695,18 @@ app.use((err, req, res, _next) => {
   return res.status(500).json({ error: 'internal error' });
 });
 
+// Releases everything this module acquired at import time, so a process that
+// merely required it can exit. Exported for tests; the long-running server never
+// calls it.
+async function shutdown() {
+  await mongoose.disconnect();
+  if (memoryServer) {
+    await memoryServer.stop();
+    memoryServer = null;
+  }
+  DB_READY = false;
+}
+
 const PORT = process.env.BACKEND_PORT || 4000;
 if (require.main === module) {
   app.listen(PORT, () => console.log(`Backend listening on http://localhost:${PORT}`));
@@ -4686,6 +4714,7 @@ if (require.main === module) {
 
 module.exports = {
   app,
+  shutdown,
   coerceDate,
   resolveLoanStatusMeta,
   buildStaffingRecommendations

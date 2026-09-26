@@ -10,7 +10,7 @@
         "db:indexes": "node scripts/indexes.js",
         "db:sanitize": "node scripts/sanitize_fields.js",
         "check:connection": "node scripts/check_connection.js",
-        "test": "node --test --test-force-exit tests/*.test.js",
+        "test": "node --test tests/*.test.js",
         "routes:baseline": "node scripts/route-parity.js --write",
         "routes:parity": "node scripts/route-parity.js",
         "migrate:local:atlas": "node scripts/migrate_to_atlas.js --from local --to env --drop-target",
@@ -27,7 +27,7 @@
         "validate:books": "node scripts/books_validate.js",
         "import:books:data": "node scripts/import_books.js data/books.template.csv",
         "migrate:covers": "node scripts/migrate_legacy_covers.js",
-        "test:characterize": "UPDATE_ROUTE_SNAPSHOT=1 node --test --test-force-exit tests/route-characterization.test.js"
+        "test:characterize": "UPDATE_ROUTE_SNAPSHOT=1 node --test tests/route-characterization.test.js"
     },
     "dependencies": {
         "bcryptjs": "^3.0.2",

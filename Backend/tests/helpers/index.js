@@ -59,6 +59,17 @@ async function stopTestServer() {
     await new Promise((resolve) => server.close(resolve));
     server = null;
   }
+  // Prefer the app's own shutdown, which also stops the in-memory mongod child
+  // process. Disconnecting mongoose alone leaves that process running and the
+  // event loop non-empty, which is what used to hang the test runner.
+  // Checked through require.cache rather than required outright: a test file that
+  // never loaded server.js must not boot it during teardown.
+  const serverModulePath = require.resolve('../../server.js');
+  const loaded = require.cache[serverModulePath];
+  if (loaded?.exports?.shutdown) {
+    await loaded.exports.shutdown();
+    return;
+  }
   await mongoose.disconnect();
 }
 
