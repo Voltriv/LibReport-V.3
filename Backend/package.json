@@ -10,7 +10,7 @@
         "db:indexes": "node scripts/indexes.js",
         "db:sanitize": "node scripts/sanitize_fields.js",
         "check:connection": "node scripts/check_connection.js",
-        "test": "node --test tests/*.test.js",
+        "test": "node --test --test-concurrency=2 tests/*.test.js",
         "routes:baseline": "node scripts/route-parity.js --write",
         "routes:parity": "node scripts/route-parity.js",
         "migrate:local:atlas": "node scripts/migrate_to_atlas.js --from local --to env --drop-target",

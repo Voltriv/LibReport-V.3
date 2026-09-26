@@ -35,6 +35,39 @@ const {
 } = require('./utils/parse');
 const { HttpError, sendError, errorHandler } = require('./middleware/errors');
 const {
+  signToken,
+  resolveAuth,
+  authRequired,
+  adminRequired,
+  elevatedAdminRequired,
+  studentRequired
+} = require('./middleware/guards');
+const { authGate } = require('./middleware/authGate');
+const { microCacheMiddleware } = require('./middleware/cache');
+const { setDbReady, isDbReady } = require('./db/state');
+const {
+  IS_PRODUCTION,
+  CORS_ORIGINS,
+  PORT,
+  UPLOAD_DIR,
+  MILLIS_PER_DAY,
+  FINE_RATE_PER_DAY,
+  DEFAULT_LOAN_DAYS,
+  VALID_LIBRARY_DAYS,
+  DEFAULT_LIBRARY_HOURS
+} = require('./config');
+const {
+  getUploadBucket,
+  setUploadBucket,
+  initUploadBucket,
+  waitForUploadBucket,
+  sanitizeFilename,
+  extractFileIdFromPath,
+  freeSpaceForUploads,
+  removeStoredFile,
+  storeBase64File
+} = require('./services/storage');
+const {
   normalizeUserStatus,
   parseUserRole,
   resolveUserRole,
@@ -45,8 +78,6 @@ const {
   DEFAULT_VISITS_PER_STAFF,
   buildStaffingRecommendations
 } = require('./services/staffing');
-
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const app = express();
 app.set('etag', 'strong');
@@ -63,10 +94,6 @@ app.use(
   })
 );
 
-const CORS_ORIGINS = String(process.env.CORS_ORIGIN || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
 if (IS_PRODUCTION && !CORS_ORIGINS.length) {
   console.warn(
     'CORS_ORIGIN is not set in production; the API will accept requests from any origin. '
@@ -79,7 +106,15 @@ const { mountBodyParsers } = require('./middleware/bodyLimits');
 mountBodyParsers(app);
 app.use(morgan('tiny'));
 
-const { authRateLimiter, passwordResetRateLimiter } = require('./middleware/rateLimit');
+const {
+  authRateLimiter,
+  passwordResetRateLimiter,
+  mountRateLimiters
+} = require('./middleware/rateLimit');
+
+// Mounted here, above the micro-cache and the auth gate, so a flood is refused
+// before it costs a cache lookup or a JWT verification in a guard.
+mountRateLimiters(app);
 
 // Legacy only: uploaded binaries live in the GridFS `uploads` bucket and are
 // served by GET /api/files/:id. This path is kept so pre-GridFS files still
@@ -89,141 +124,10 @@ const { authRateLimiter, passwordResetRateLimiter } = require('./middleware/rate
 // effect, before anything had decided the process needed it -- and nothing writes
 // here any more: express.static answers next() when the directory is absent, and
 // the one remaining use is an unlink already wrapped in try/catch.
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
 app.use('/uploads', express.static(UPLOAD_DIR));
 
-const MIME_EXTENSIONS = {
-  'image/png': '.png',
-  'image/jpeg': '.jpg',
-  'image/jpg': '.jpg',
-  'image/webp': '.webp',
-  'application/pdf': '.pdf'
-};
 
-const MILLIS_PER_DAY = 24 * 60 * 60 * 1000;
 
-const FINE_RATE_PER_DAY = (() => {
-  const raw = Number.parseFloat(process.env.FINE_RATE_PER_DAY ?? '');
-  return Number.isFinite(raw) && raw > 0 ? raw : 1;
-})();
-
-let uploadBucket = null;
-const uploadBucketEvents = new EventEmitter();
-uploadBucketEvents.setMaxListeners(0);
-
-function setUploadBucket(bucket) {
-  if (bucket) {
-    uploadBucket = bucket;
-    uploadBucketEvents.emit('ready', bucket);
-  } else {
-    uploadBucket = null;
-  }
-}
-
-function waitForUploadBucket(timeoutMs = 5000) {
-  if (NO_DB) {
-    return Promise.reject(new Error('Database disabled (NO_DB=true)'));
-  }
-  if (uploadBucket) {
-    return Promise.resolve(uploadBucket);
-  }
-
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error('File storage is not ready yet'));
-    }, timeoutMs);
-
-    const onReady = (bucket) => {
-      cleanup();
-      resolve(bucket);
-    };
-
-    function cleanup() {
-      clearTimeout(timer);
-      uploadBucketEvents.removeListener('ready', onReady);
-    }
-
-    uploadBucketEvents.once('ready', onReady);
-  });
-}
-
-function parseBase64Payload(raw) {
-  if (!raw || typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith('data:')) {
-    const comma = trimmed.indexOf(',');
-    if (comma === -1) return null;
-    const meta = trimmed.slice(5, comma); // skip "data:"
-    const [mimePart, encoding] = meta.split(';');
-    if (!encoding || encoding.toLowerCase() !== 'base64') return null;
-    const data = trimmed.slice(comma + 1);
-    if (!data) return null;
-    try {
-      const buffer = Buffer.from(data, 'base64');
-      return { buffer, mime: (mimePart || '').toLowerCase() };
-    } catch {
-      return null;
-    }
-  }
-  try {
-    const buffer = Buffer.from(trimmed, 'base64');
-    return { buffer, mime: '' };
-  } catch {
-    return null;
-  }
-}
-
-function sanitizeFilename(name) {
-  if (!name || typeof name !== 'string') return 'file';
-  return name.replace(/[^A-Za-z0-9._-]+/g, '_');
-}
-
-function extractFileIdFromPath(path) {
-  if (!path || typeof path !== 'string') return null;
-  const match = path.match(/\/api\/files\/([a-f0-9]{24})/i);
-  return match ? match[1] : null;
-}
-
-async function freeSpaceForUploads() {
-  try {
-    const bucket =
-      uploadBucket ||
-      (await waitForUploadBucket(5000).catch(() => null));
-    if (!bucket || !mongoose.connection?.db) return false;
-
-    const filesCollection = mongoose.connection.db.collection('uploads.files');
-    const oldest = await filesCollection.find({}).sort({ uploadDate: 1 }).limit(1).toArray();
-    if (!oldest.length) return false;
-
-    const file = oldest[0];
-    await bucket.delete(file._id);
-
-    const fileIdString = file._id.toString();
-    await Book.updateMany(
-      {
-        $or: [
-          { pdfFileId: file._id },
-          { pdfPath: { $regex: fileIdString, $options: 'i' } }
-        ]
-      },
-      {
-        $unset: {
-          pdfFileId: '',
-          pdfPath: '',
-          pdfMime: '',
-          pdfOriginalName: ''
-        }
-      }
-    );
-
-    return true;
-  } catch (err) {
-    console.error('Failed to free upload space', err);
-    return false;
-  }
-}
 
 function resolveLoanStatusMeta(loan, options = {}) {
   const { now = new Date(), activeLabel = 'active' } = options;
@@ -241,178 +145,20 @@ function resolveLoanStatusMeta(loan, options = {}) {
 }
 
 
-async function removeStoredFile(stored) {
-  if (!stored) return;
-  const entry =
-    typeof stored === 'string'
-      ? { storedPath: stored }
-      : stored && typeof stored === 'object'
-      ? stored
-      : null;
-  if (!entry) return;
 
-  const fileId = entry.fileId || entry.gridFsId || entry.id;
-  const bucket =
-    uploadBucket ||
-    (await waitForUploadBucket(5000).catch(() => null));
-  if (fileId && bucket) {
-    try {
-      const objectId =
-        typeof fileId === 'string' ? new mongoose.Types.ObjectId(fileId) : fileId;
-      await bucket.delete(objectId);
-      return;
-    } catch (err) {
-      if (!err || err.code !== 'FileNotFound') {
-        console.warn('Failed to delete GridFS file:', err?.message || err);
-      }
-    }
-  }
-
-  const storedPath = entry.storedPath;
-  if (!storedPath) return;
-  const prefix = '/uploads/';
-  let relative = storedPath;
-  if (storedPath.startsWith(prefix)) {
-    relative = storedPath.slice(prefix.length);
-  }
-  relative = relative.replace(/^\/+/, '');
-  if (!relative || relative.includes('..')) return;
-  const target = path.join(UPLOAD_DIR, relative);
-  try {
-    await fsp.unlink(target);
-  } catch {}
-}
-
-async function storeBase64File({
-  base64,
-  originalName,
-  allowedMime = [],
-  maxBytes = 5 * 1024 * 1024,
-  subDir = ''
-}) {
-  const parsed = parseBase64Payload(base64);
-  if (!parsed) throw new Error('Invalid file data provided');
-  const { buffer } = parsed;
-  const bucket =
-    uploadBucket ||
-    (await waitForUploadBucket(5000).catch(() => null));
-  if (!bucket) {
-    throw new Error('File storage is not ready. Please try again shortly.');
-  }
-  const mime = (parsed.mime || '').toLowerCase();
-  const normalizedAllowed = allowedMime.map((m) => m.toLowerCase());
-  if (maxBytes && buffer.length > maxBytes) {
-    throw new Error(`File is too large. Max size is ${Math.round(maxBytes / (1024 * 1024))}MB`);
-  }
-  if (normalizedAllowed.length) {
-    if (mime) {
-      if (!normalizedAllowed.includes(mime)) {
-        throw new Error('Unsupported file type');
-      }
-    } else {
-      const fromName = originalName ? path.extname(originalName).toLowerCase() : '';
-      const fallbackMime = fromName === '.pdf' ? 'application/pdf' : '';
-      if (fallbackMime && !normalizedAllowed.includes(fallbackMime)) {
-        throw new Error('Unsupported file type');
-      }
-    }
-  }
-
-  let ext = '';
-  if (originalName) {
-    ext = path.extname(originalName).toLowerCase();
-  }
-  if (!ext && mime && MIME_EXTENSIONS[mime]) {
-    ext = MIME_EXTENSIONS[mime];
-  }
-  if (!ext && normalizedAllowed.includes('application/pdf')) {
-    ext = '.pdf';
-  }
-  if (!ext && mime.startsWith('image/')) {
-    ext = '.png';
-  }
-
-  const safeName = sanitizeFilename(originalName || 'file');
-  const fileName = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext || ''}`;
-
-  const contentType =
-    mime ||
-    (ext === '.pdf'
-      ? 'application/pdf'
-      : ext === '.png'
-      ? 'image/png'
-      : ext === '.jpg' || ext === '.jpeg'
-      ? 'image/jpeg'
-      : '');
-
-  const fileId = new mongoose.Types.ObjectId();
-  await new Promise((resolve, reject) => {
-    const uploadStream = bucket.openUploadStreamWithId(fileId, fileName, {
-      contentType: contentType || undefined,
-      metadata: {
-        originalName: safeName || fileName,
-        category: subDir ? sanitizeFilename(subDir) : undefined,
-        mime: contentType || mime || 'application/octet-stream',
-        uploadedAt: new Date()
-      }
-    });
-    uploadStream.on('error', reject);
-    uploadStream.on('finish', resolve);
-    uploadStream.end(buffer);
-  });
-
-  return {
-    storedPath: `/api/files/${fileId.toString()}`,
-    originalName: safeName || fileName,
-    fileId,
-    mime: contentType || mime || 'application/octet-stream'
-  };
-}
-
-
-const VALID_LIBRARY_DAYS = [1, 2, 3, 4, 5, 6];
-const DEFAULT_LIBRARY_HOURS = VALID_LIBRARY_DAYS.map((dayOfWeek) => ({
-  dayOfWeek,
-  open: '08:00',
-  close: '17:00'
-}));
 
 
 
 // --- DB connect
-const { resolveMongoConfig } = require('./db/uri');
-const { uri: MONGO_URI_INIT, dbName: DB_NAME } = resolveMongoConfig();
-const JWT_SECRET = process.env.JWT_SECRET;
-const NO_DB = String(process.env.NO_DB || process.env.BACKEND_NO_DB || '').toLowerCase() === 'true';
-const USE_MEMORY_DB = String(process.env.USE_MEMORY_DB || process.env.BACKEND_INMEMORY_DB || '').toLowerCase() === 'true';
-const defaultAutoMemory = process.env.NODE_ENV === 'production' ? 'false' : 'true';
-const AUTO_MEMORY_FALLBACK =
-  USE_MEMORY_DB ||
-  String(
-    process.env.AUTO_MEMORY_DB ||
-      process.env.BACKEND_AUTO_MEMORY_DB ||
-      process.env.BACKEND_AUTO_MEMORY ||
-      defaultAutoMemory
-  )
-    .toLowerCase()
-    .trim() !== 'false';
-// Default borrowing period in days. Can be overridden via environment.
-// Clamp to a safe range so misconfigured env vars don't break borrowing logic.
-const LOAN_DAYS_FALLBACK = 28;
-const DEFAULT_LOAN_DAYS = (() => {
-  const raw = process.env.LOAN_DAYS_DEFAULT;
-  if (raw === undefined || raw === null || raw === '') {
-    return LOAN_DAYS_FALLBACK;
-  }
-  const num = Number(raw);
-  if (!Number.isFinite(num)) {
-    return LOAN_DAYS_FALLBACK;
-  }
-  let days = Math.trunc(num);
-  if (days < 1) days = 1;
-  if (days > 180) days = 180;
-  return days;
-})();
+const {
+  MONGO_URI_INIT,
+  DB_NAME,
+  JWT_SECRET,
+  NO_DB,
+  USE_MEMORY_DB,
+  AUTO_MEMORY_FALLBACK
+} = require('./config');
+
 const MEMORY_SERVER_VERSION =
   process.env.MONGO_MEMORY_SERVER_VERSION ||
   process.env.MONGO_MEMORY_VERSION ||
@@ -481,19 +227,6 @@ if (!MONGO_URI && !NO_DB && !USE_MEMORY_DB) {
   process.exit(1);
 }
 
-let DB_READY = false;
-
-function initUploadBucket() {
-  if (NO_DB) return;
-  const db = mongoose.connection && mongoose.connection.db;
-  if (!db) return;
-  try {
-    const bucket = new mongoose.mongo.GridFSBucket(db, { bucketName: 'uploads' });
-    setUploadBucket(bucket);
-  } catch (err) {
-    console.error('Failed to initialize GridFS bucket:', err?.message || err);
-  }
-}
 
 mongoose.connection.on('connected', initUploadBucket);
 mongoose.connection.on('disconnected', () => {
@@ -514,7 +247,7 @@ async function startMemoryDatabase(reason) {
     MONGO_URI = memoryServer.getUri();
     await mongoose.connect(MONGO_URI, { dbName: DB_NAME, serverSelectionTimeoutMS: 10000, family: 4 });
     initUploadBucket();
-    DB_READY = true;
+    setDbReady(true);
     if (reason) {
       console.warn(`MongoDB connection failed (${reason}). Started in-memory database "${DB_NAME}" for development.`);
     } else {
@@ -559,7 +292,7 @@ async function connectMongo() {
       family: 4
     });
     initUploadBucket();
-    DB_READY = true;
+    setDbReady(true);
     console.log(`MongoDB connected to database "${DB_NAME}"`);
     await ensureDefaultAdmin();
   } catch (err) {
@@ -819,7 +552,7 @@ async function ensureDefaultAdmin() {
 
 // --- Health
 app.get('/api/health', async (_req, res) => {
-  const dbReady = NO_DB ? false : (mongoose.connection.readyState === 1 || DB_READY);
+  const dbReady = NO_DB ? false : (mongoose.connection.readyState === 1 || isDbReady());
   return res.status(200).json({ ok: true, db: dbReady, noDbMode: NO_DB, time: new Date().toISOString() });
 });
 
@@ -856,214 +589,15 @@ if (NO_DB) {
 }
 
 // --- Micro-cache for read-heavy GET endpoints (15s TTL)
-const microCache = new Map();
-const TTL_MS = 15_000;
-const MICRO_CACHE_MAX_ENTRIES = 500;
+app.use(microCacheMiddleware);
 
-// This middleware runs before the auth dispatcher, so req.user does not exist
-// yet and identity has to come from the raw header. Without an identity
-// component in the key, one caller's response was served to the next for
-// per-user endpoints like /api/dashboard and /api/reports/* -- including to
-// unauthenticated callers, who received a full admin payload with a 200.
-// The token is hashed rather than used directly so bearer tokens are not held
-// as map keys.
-function cacheIdentity(req) {
-  const [, token] = (req.headers.authorization || '').split(' ');
-  if (!token) return 'anon';
-  return crypto.createHash('sha256').update(token).digest('hex').slice(0, 32);
-}
-function cacheKey(req) { return `${req.method}:${cacheIdentity(req)}:${req.originalUrl}`; }
-
-// Drops expired entries, then oldest-first if still at the cap. A Map iterates in
-// insertion order, so the first key is the oldest. Without this the cache grew
-// without bound: one entry per distinct query string, never released.
-function pruneMicroCache(now) {
-  for (const [key, entry] of microCache) {
-    if (entry.expires <= now) microCache.delete(key);
-  }
-  while (microCache.size >= MICRO_CACHE_MAX_ENTRIES) {
-    const oldest = microCache.keys().next();
-    if (oldest.done) break;
-    microCache.delete(oldest.value);
-  }
-}
-function cacheable(path) {
-  return (
-    path.startsWith('/api/books/library') ||
-    path.startsWith('/api/reports/') ||
-    path === '/api/health' ||
-    path.startsWith('/api/books/lookup') ||
-    path.startsWith('/api/hours') ||
-    path.startsWith('/api/dashboard') ||
-    path.startsWith('/api/heatmap/visits')
-  );
-}
-app.use((req, res, next) => {
-  if (req.method !== 'GET' || !cacheable(req.path)) return next();
-  const key = cacheKey(req);
-  const hit = microCache.get(key);
-  const now = Date.now();
-  if (hit && hit.expires > now) {
-    res.set('X-Micro-Cache', 'HIT');
-    return res.status(hit.status).json(hit.body);
-  }
-  const json = res.json.bind(res);
-  res.json = (body) => {
-    const status = res.statusCode || 200;
-    // Successful responses only. res.json was previously wrapped without a status
-    // check, so a rejection was cached and then replayed -- an admin could be
-    // served the 403 a student had just received.
-    if (status >= 200 && status < 300) {
-      try {
-        pruneMicroCache(now);
-        microCache.set(key, { body, status, expires: now + TTL_MS });
-        res.set('X-Micro-Cache', 'MISS');
-      } catch {}
-    }
-    return json(body);
-  };
-  next();
-});
-
-// --- Admin-only global guard for API (except health and auth)
-app.use((req, res, next) => {
-  if (!req.path.startsWith('/api')) return next();
-  const open =
-    req.path === '/api' ||
-    req.path === '/api/' ||
-    req.path === '/api/health' ||
-    req.path.startsWith('/api/auth/') ||
-    // Not public: the file route enforces its own check, because whether a token
-    // is required depends on the stored content type (cover image vs book PDF)
-    // and that is only knowable after a database lookup.
-    req.path === '/api/files' ||
-    req.path.startsWith('/api/files/');
-  if (open) return next();
-
-  // Routes that any authenticated user (students or librarians) can access
-  const sharedAuthPaths = [
-    '/api/books/library',
-    '/api/books/lookup',
-    '/api/hours'
-  ];
-  if (sharedAuthPaths.some((p) => req.path.startsWith(p)) || (req.path.startsWith('/api/books/') && req.path.endsWith('/pdf'))) {
-    return authRequired(req, res, next);
-  }
-
-  // Student specific APIs
-  if (req.path.startsWith('/api/student/')) {
-    return studentRequired(req, res, next);
-  }
-
-  if (!NO_DB && !(mongoose.connection.readyState === 1 || DB_READY)) {
-    return res.status(503).json({ error: 'Database not ready' });
-  }
-  return adminRequired(req, res, next);
-});
-// --- Auth helpers ---
-function signToken(user) {
-  const safeRole = resolveUserRole(user?.role);
-  return jwt.sign({ sub: String(user._id), email: user.email, role: safeRole }, JWT_SECRET, { expiresIn: '7d' });
-}
-
-// Tokens live for 7 days, so signature alone is not enough: an account
-// disabled after its token was issued must lose access immediately.
-async function accountIsDisabled(sub) {
-  if (NO_DB || !sub || !mongoose.isValidObjectId(sub)) return false;
-  if (!(mongoose.connection.readyState === 1 || DB_READY)) return false;
-  const projection = { status: 1 };
-  const found =
-    (await Admin.findById(sub, projection).lean())
-    || (await User.findById(sub, projection).lean())
-    || (await Faculty.findById(sub, projection).lean());
-  if (!found) return false;
-  return normalizeUserStatus(found.status) === 'disabled';
-}
-
-// Resolves the bearer token without touching the response, so a route that needs
-// a verdict rather than a middleware short-circuit can share one implementation
-// with authRequired. GET /api/files/:id needs exactly that: cover images must
-// stay readable without a token, book PDFs must not.
-//
-// Memoized for the life of the request. The global dispatcher below resolves a
-// guard for every /api path, and 62 routes then pass a guard again as route
-// middleware, so without this every authenticated request verified its JWT twice
-// and ran accountIsDisabled twice -- up to six redundant collection lookups.
-// Per-request caching is safe: the token cannot change mid-request, and the
-// disabled check still runs afresh on the next one, which is what it is for.
-const AUTH_RESULT = Symbol('authResult');
-
-async function resolveAuth(req) {
-  if (req[AUTH_RESULT]) return req[AUTH_RESULT];
-  const result = await computeAuth(req);
-  req[AUTH_RESULT] = result;
-  return result;
-}
-
-async function computeAuth(req) {
-  const header = req.headers.authorization || '';
-  const [, token] = header.split(' ');
-  if (!token) return { ok: false, status: 401, message: 'missing token' };
-  let claims;
-  try {
-    claims = jwt.verify(token, JWT_SECRET);
-  } catch {
-    return { ok: false, status: 401, message: 'invalid token' };
-  }
-  if (await accountIsDisabled(claims.sub)) {
-    return { ok: false, status: 401, message: 'Account is disabled', claims };
-  }
-  return { ok: true, claims };
-}
-
-function authRequired(req, res, next) {
-  resolveAuth(req)
-    .then((result) => {
-      if (result.claims) req.user = result.claims;
-      if (!result.ok) return res.status(result.status).json({ error: result.message });
-      return next();
-    })
-    .catch(next);
-}
-
-function adminRequired(req, res, next) {
-  return authRequired(req, res, () => {
-    const role = req.user?.role;
-    if (role !== 'admin' && role !== 'librarian' && role !== 'librarian_staff') {
-      return res.status(403).json({ error: 'admin role required' });
-    }
-    return next();
-  });
-}
-
-// Stricter admin middleware: only full admins and librarians
-// Used for managing admin accounts so librarian_staff cannot access
-function elevatedAdminRequired(req, res, next) {
-  return authRequired(req, res, () => {
-    const role = req.user?.role;
-    if (role !== 'admin' && role !== 'librarian') {
-      return res.status(403).json({ error: 'librarian or admin role required' });
-    }
-    return next();
-  });
-}
-
-function studentRequired(req, res, next) {
-  return authRequired(req, res, () => {
-    const role = req.user?.role;
-
-    if (role !== 'student' && role !== 'librarian' && role !== 'admin' && role !== 'librarian_staff') {
-
-      return res.status(403).json({ error: 'student role required' });
-    }
-    return next();
-  });
-}
+// --- The authorization boundary: see middleware/authGate.js
+app.use(authGate);
 
 // --- Auth: Student Signup
 app.post('/api/auth/signup', authRateLimiter, async (req, res) => {
   try {
-    if (!NO_DB && !(mongoose.connection.readyState === 1 || DB_READY)) {
+    if (!NO_DB && !(mongoose.connection.readyState === 1 || isDbReady())) {
       return res.status(503).json({ error: 'Database not ready' });
     }
     const { studentId, email, fullName, department, password, confirmPassword } = req.body || {};
@@ -1177,7 +711,7 @@ app.post('/api/auth/admin-signup', authRateLimiter, async (req, res) => {
 app.post('/api/auth/login', authRateLimiter, async (req, res) => {
   const { password, studentId } = req.body || {};
   if (!studentId || !password) return res.status(400).json({ error: 'studentId and password required' });
-  if (!NO_DB && !(mongoose.connection.readyState === 1 || DB_READY)) {
+  if (!NO_DB && !(mongoose.connection.readyState === 1 || isDbReady())) {
     return res.status(503).json({ error: 'Database not ready' });
   }
 
@@ -2062,7 +1596,7 @@ app.get('/api/books/:id/pdf', authRequired, async (req, res) => {
     return res.status(404).json({ error: 'PDF not found' });
   }
 
-  const bucket = uploadBucket || (await waitForUploadBucket(5000).catch(() => null));
+  const bucket = getUploadBucket() || (await waitForUploadBucket(5000).catch(() => null));
   if (!bucket) return res.status(503).json({ error: 'File storage is not ready yet' });
 
   let fileId = null;
@@ -2413,7 +1947,7 @@ app.get(['/api/files/:id', '/api/files/:id/:name'], async (req, res) => {
   if (NO_DB) return res.status(503).json({ error: 'Database disabled (NO_DB=true)' });
 
   const bucket =
-    uploadBucket ||
+    getUploadBucket() ||
     (await waitForUploadBucket(5000).catch(() => null));
   if (!bucket) return res.status(503).json({ error: 'File storage is not ready yet' });
 
@@ -4312,7 +3846,7 @@ app.delete('/api/admin/uploads/pdfs', adminRequired, async (req, res) => {
   let limit = Number(rawLimit);
   if (!Number.isFinite(limit) || limit <= 0) limit = 0;
 
-  const bucket = uploadBucket || (await waitForUploadBucket(5000).catch(() => null));
+  const bucket = getUploadBucket() || (await waitForUploadBucket(5000).catch(() => null));
   if (!bucket || !mongoose.connection?.db) {
     return res.status(503).json({ error: 'File storage is not ready yet' });
   }
@@ -4405,10 +3939,9 @@ async function shutdown() {
     await memoryServer.stop();
     memoryServer = null;
   }
-  DB_READY = false;
+  setDbReady(false);
 }
 
-const PORT = process.env.BACKEND_PORT || 4000;
 if (require.main === module) {
   app.listen(PORT, () => console.log(`Backend listening on http://localhost:${PORT}`));
 }
