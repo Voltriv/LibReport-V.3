@@ -10,7 +10,6 @@ const mongoose = require('mongoose');
 const morgan = require('morgan');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const validator = require('validator');
@@ -25,11 +24,27 @@ const {
 } = require('./utils/pushNotifications');
 
 // Student/Admin ID format shared with models
+const { STUDENT_ID_REGEX } = require('./models/validators');
+
 const {
-  STUDENT_ID_REGEX,
-  USER_ROLE_VALUES,
-  normalizeUserRole: normalizeRoleValue
-} = require('./models/validators');
+  coerceDate,
+  parseIntField,
+  parseTagsInput,
+  escapeRegex,
+  readNumericQueryParam
+} = require('./utils/parse');
+const { HttpError, sendError, errorHandler } = require('./middleware/errors');
+const {
+  normalizeUserStatus,
+  parseUserRole,
+  resolveUserRole,
+  buildRoleFilter
+} = require('./services/users');
+const {
+  STAFFING_LOOKBACK_DAYS,
+  DEFAULT_VISITS_PER_STAFF,
+  buildStaffingRecommendations
+} = require('./services/staffing');
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
@@ -60,48 +75,11 @@ if (IS_PRODUCTION && !CORS_ORIGINS.length) {
 }
 app.use(cors(CORS_ORIGINS.length ? { origin: CORS_ORIGINS, credentials: true } : {}));
 
-// Only book create and update carry files, as base64 strings inside JSON, so
-// only they need the large ceiling. Applying it globally meant every endpoint
-// would buffer up to 50mb before any handler ran.
-//
-// Registered as middleware rather than route handlers on purpose: app.post(path,
-// parser) would add a route layer and change the registered-route list that
-// scripts/route-parity.js guards. The first parser to consume a body wins, so
-// this has to sit above the default one.
-const UPLOAD_BODY_LIMIT = '50mb';
-const DEFAULT_BODY_LIMIT = '1mb';
-const uploadJsonParser = express.json({ limit: UPLOAD_BODY_LIMIT });
-function acceptsUpload(req) {
-  if (req.method === 'POST') return req.path === '/api/books';
-  if (req.method === 'PATCH') return /^\/api\/books\/[^/]+$/.test(req.path);
-  return false;
-}
-app.use((req, res, next) => (acceptsUpload(req) ? uploadJsonParser(req, res, next) : next()));
-app.use(express.json({ limit: DEFAULT_BODY_LIMIT }));
-app.use(express.urlencoded({ extended: true, limit: DEFAULT_BODY_LIMIT }));
+const { mountBodyParsers } = require('./middleware/bodyLimits');
+mountBodyParsers(app);
 app.use(morgan('tiny'));
 
-// Brute-force protection for auth endpoints. Keyed by IP; trust proxy above
-// ensures req.ip reflects the real client, not the Nginx hop.
-const authRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many attempts. Please try again later.' }
-});
-
-// Password reset gets its own bucket rather than sharing the one above. A reset
-// token is 32 hex characters, so guessing is the threat that matters, and the
-// request endpoint can be used to flood a mailbox. Keeping the budgets separate
-// also means reset attempts cannot exhaust a legitimate user's login allowance.
-const passwordResetRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many password reset attempts. Please try again later.' }
-});
+const { authRateLimiter, passwordResetRateLimiter } = require('./middleware/rateLimit');
 
 // Legacy only: uploaded binaries live in the GridFS `uploads` bucket and are
 // served by GET /api/files/:id. This path is kept so pre-GridFS files still
@@ -123,9 +101,6 @@ const MIME_EXTENSIONS = {
 };
 
 const MILLIS_PER_DAY = 24 * 60 * 60 * 1000;
-const STAFFING_LOOKBACK_DAYS = 7;
-const DEFAULT_VISITS_PER_STAFF = 20;
-const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const FINE_RATE_PER_DAY = (() => {
   const raw = Number.parseFloat(process.env.FINE_RATE_PER_DAY ?? '');
@@ -250,44 +225,6 @@ async function freeSpaceForUploads() {
   }
 }
 
-function coerceDate(raw) {
-  if (!raw) return null;
-  if (raw instanceof Date) {
-    const time = raw.getTime();
-    return Number.isNaN(time) ? null : new Date(time);
-  }
-  if (typeof raw === 'number') {
-    if (!Number.isFinite(raw)) return null;
-    const date = new Date(raw);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-  if (typeof raw === 'string') {
-    const parsed = Date.parse(raw);
-    if (Number.isNaN(parsed)) return null;
-    const date = new Date(parsed);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-  if (raw && typeof raw === 'object') {
-    if ('$date' in raw) {
-      return coerceDate(raw.$date);
-    }
-    if (typeof raw.toDate === 'function') {
-      try {
-        return coerceDate(raw.toDate());
-      } catch {
-        return null;
-      }
-    }
-    if (typeof raw.valueOf === 'function') {
-      const value = raw.valueOf();
-      if (value !== raw) {
-        return coerceDate(value);
-      }
-    }
-  }
-  return null;
-}
-
 function resolveLoanStatusMeta(loan, options = {}) {
   const { now = new Date(), activeLabel = 'active' } = options;
   const resolvedNow = coerceDate(now) || new Date();
@@ -303,51 +240,6 @@ function resolveLoanStatusMeta(loan, options = {}) {
   return { key: 'active', label };
 }
 
-function normalizeUserStatus(rawStatus) {
-  const value = typeof rawStatus === 'string' ? rawStatus.trim().toLowerCase() : '';
-  if (value === 'disabled' || value === 'inactive') return 'disabled';
-  if (value === 'pending') return 'pending';
-  return 'active';
-}
-
-const USER_ROLE_DEFAULT = USER_ROLE_VALUES[0];
-
-function parseUserRole(rawRole) {
-  const normalized = normalizeRoleValue(rawRole);
-  if (normalized && USER_ROLE_VALUES.includes(normalized)) {
-    return normalized;
-  }
-  return null;
-}
-
-function resolveUserRole(rawRole, fallback = USER_ROLE_DEFAULT) {
-  const normalized = parseUserRole(rawRole);
-  if (normalized) return normalized;
-  if (typeof fallback !== 'undefined') {
-    const fallbackNormalized = parseUserRole(fallback);
-    if (fallbackNormalized) return fallbackNormalized;
-  }
-  return USER_ROLE_DEFAULT;
-}
-
-function buildRoleFilter(...roles) {
-  const values = new Set();
-  for (const role of roles) {
-    if (role === undefined || role === null) continue;
-    const normalized = parseUserRole(role);
-    if (normalized) values.add(normalized);
-    const raw = String(role).trim();
-    if (raw) {
-      values.add(raw);
-      const capitalized = raw.charAt(0).toUpperCase() + raw.slice(1);
-      values.add(capitalized);
-    }
-  }
-  if (!values.size) {
-    return { role: { $exists: true } };
-  }
-  return { role: { $in: Array.from(values) } };
-}
 
 async function removeStoredFile(stored) {
   if (!stored) return;
@@ -477,58 +369,6 @@ async function storeBase64File({
   };
 }
 
-function parseIntField(value, fieldName) {
-  if (value === undefined || value === null || value === '') return null;
-  const num = Number(value);
-  if (!Number.isFinite(num)) {
-    throw new Error(`${fieldName} must be a number`);
-  }
-  return Math.max(0, Math.trunc(num));
-}
-
-function parseTagsInput(raw, fallback) {
-  const list = [];
-  if (Array.isArray(raw)) {
-    for (const item of raw) {
-      if (item !== undefined && item !== null) list.push(String(item));
-    }
-  } else if (typeof raw === 'string') {
-    const trimmed = raw.trim();
-    if (trimmed) {
-      if ((trimmed.startsWith('[') && trimmed.endsWith(']')) || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
-        try {
-          const parsed = JSON.parse(trimmed);
-          if (Array.isArray(parsed)) {
-            for (const item of parsed) {
-              if (item !== undefined && item !== null) list.push(String(item));
-            }
-          }
-        } catch {
-          list.push(trimmed);
-        }
-      } else {
-        for (const piece of trimmed.split(',')) {
-          if (piece.trim()) list.push(piece.trim());
-        }
-      }
-    }
-  }
-  if (fallback) list.push(String(fallback));
-  const unique = new Set();
-  const out = [];
-  for (const item of list) {
-    const val = item.trim();
-    if (val && !unique.has(val.toLowerCase())) {
-      unique.add(val.toLowerCase());
-      out.push(val);
-    }
-  }
-  return out;
-}
-
-function escapeRegex(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 const VALID_LIBRARY_DAYS = [1, 2, 3, 4, 5, 6];
 const DEFAULT_LIBRARY_HOURS = VALID_LIBRARY_DAYS.map((dayOfWeek) => ({
@@ -537,103 +377,7 @@ const DEFAULT_LIBRARY_HOURS = VALID_LIBRARY_DAYS.map((dayOfWeek) => ({
   close: '17:00'
 }));
 
-function readNumericQueryParam(value, options = {}) {
-  const { defaultValue, min, max, integer = false, name = 'value' } = options;
-  const hasValue = !(value === undefined || value === null || value === '');
-  let candidate;
-  if (hasValue) {
-    candidate = Number(value);
-  } else if (defaultValue !== undefined) {
-    candidate = Number(defaultValue);
-  } else {
-    throw new Error(`${name} is required`);
-  }
 
-  if (!Number.isFinite(candidate)) {
-    throw new Error(`${name} must be a number`);
-  }
-
-  let result = integer ? Math.trunc(candidate) : candidate;
-
-  if (min !== undefined && result < min) {
-    result = min;
-  }
-  if (max !== undefined && result > max) {
-    result = max;
-  }
-
-  return result;
-}
-
-function buildStaffingRecommendations(hourlyBuckets = [], dayBuckets = [], options = {}) {
-  const lookbackDays = Math.max(1, options.lookbackDays ?? STAFFING_LOOKBACK_DAYS);
-  const visitsPerStaff = Math.max(1, options.visitsPerStaff ?? DEFAULT_VISITS_PER_STAFF);
-
-  const totalVisits = hourlyBuckets.reduce((acc, item) => acc + Number(item?.count || 0), 0);
-  const avgDailyVisits = totalVisits / lookbackDays;
-
-  const peakHours = hourlyBuckets
-    .filter((item) => Number.isFinite(item?.hour) && item.count > 0)
-    .map((item) => {
-      const hour = Number(item.hour);
-      const avg = Number(item.count || 0) / lookbackDays;
-      const padded = String(hour).padStart(2, '0');
-      const endHour = (hour + 1) % 24;
-      return {
-        hour,
-        label: `${padded}:00 - ${String(endHour).padStart(2, '0')}:00`,
-        avgVisits: Number(avg.toFixed(1)),
-        recommendedStaff: Math.max(1, Math.ceil(avg / visitsPerStaff))
-      };
-    })
-    .sort((a, b) => b.avgVisits - a.avgVisits)
-    .slice(0, 3);
-
-  const approxWeeks = Math.max(1, Math.round(lookbackDays / 7) || 1);
-  const busyDays = dayBuckets
-    .filter((item) => Number.isFinite(item?.dow))
-    .map((item) => {
-      const dow = Number(item.dow);
-      const idx = ((dow || 1) - 1 + 7) % 7;
-      const avg = Number(item.count || 0) / approxWeeks;
-      return {
-        dow: idx,
-        label: DAY_LABELS[idx],
-        avgVisits: Number(avg.toFixed(1))
-      };
-    })
-    .sort((a, b) => b.avgVisits - a.avgVisits)
-    .slice(0, 3);
-
-  const recommendations = [];
-  if (peakHours.length > 0) {
-    const top = peakHours[0];
-    recommendations.push(
-      `Plan for at least ${top.recommendedStaff} staff between ${top.label} to handle roughly ${top.avgVisits} visits.`
-    );
-  }
-  if (busyDays.length > 0) {
-    const labels = busyDays.map((item) => item.label);
-    const formatted =
-      labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(', ')} and ${labels.slice(-1)}`;
-    recommendations.push(`Expect higher footfall on ${formatted}. Consider staggered breaks those days.`);
-  }
-  if (avgDailyVisits > visitsPerStaff * 3) {
-    recommendations.push(
-      `Average daily visits (~${Number(avgDailyVisits.toFixed(1))}) exceed the safe capacity of a ${visitsPerStaff}-visit staffing band. Evaluate adding coverage during peaks.`
-    );
-  }
-
-  return {
-    lookbackDays,
-    visitsPerStaff,
-    averageDailyVisits: Number(avgDailyVisits.toFixed(1)),
-    totalVisits,
-    peakHours,
-    busyDays,
-    recommendations
-  };
-}
 
 // --- DB connect
 const { resolveMongoConfig } = require('./db/uri');
@@ -850,12 +594,6 @@ const {
 } = require('./models');
 // Models loaded from ./models (legacy inline schema removed)
 
-class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
 
 function resolveLoanDuration(daysRaw) {
   try {
@@ -925,10 +663,6 @@ async function borrowBookCore({ borrowerId, bookId, daysRaw, enforceUniqueLoan }
   return { user, book, loan: loanDoc };
 }
 
-function sendError(res, err, fallbackMessage) {
-  const status = Number.isInteger(err?.status) ? err.status : 500;
-  res.status(status).json({ error: err?.message || fallbackMessage });
-}
 
 function normalizeBorrowRequestAggregate(doc) {
   if (!doc) return null;
@@ -4662,41 +4396,8 @@ app.get('/api/users/lookup', authRequired, async (req, res) => {
 
 // --- Error handler
 // Registered last so it catches rejections from every route above (Express 5
-// forwards async errors here). Without it Express replies with an HTML page
-// that embeds the stack trace and absolute file paths, and the frontend — which
-// reads err.response.data.error — has nothing to show the user.
-// eslint-disable-next-line no-unused-vars
-app.use((err, req, res, _next) => {
-  if (res.headersSent) return;
-
-  if (err?.name === 'CastError') {
-    return res.status(400).json({ error: `invalid ${err.path === '_id' ? 'id' : err.path}` });
-  }
-  if (err?.name === 'ValidationError') {
-    const details = Object.values(err.errors || {}).map((e) => e.message);
-    return res.status(400).json({ error: details.join('; ') || 'validation failed' });
-  }
-  if (err?.code === 11000 || err?.code === 11001) {
-    const field = Object.keys(err.keyPattern || err.keyValue || {})[0];
-    return res.status(409).json({ error: field ? `${field} already exists` : 'duplicate value' });
-  }
-  if (err?.type === 'entity.parse.failed' || err instanceof SyntaxError) {
-    return res.status(400).json({ error: 'malformed JSON body' });
-  }
-  // body-parser rejects an oversized body with a 413 error, but nothing mapped
-  // it, so the client saw a generic 500 and no indication of what was wrong.
-  // This was already true of the old global 50mb ceiling; narrowing the limit
-  // makes it reachable often enough to matter.
-  if (err?.type === 'entity.too.large') {
-    return res.status(413).json({ error: 'request body too large' });
-  }
-
-  console.error(`Unhandled error on ${req.method} ${req.originalUrl}:`, err?.stack || err);
-  return res.status(500).json({ error: 'internal error' });
-});
-
-// Releases everything this module acquired at import time, so a process that
-// merely required it can exit. Exported for tests; the long-running server never
+// forwards async errors here).
+app.use(errorHandler);
 // calls it.
 async function shutdown() {
   await mongoose.disconnect();

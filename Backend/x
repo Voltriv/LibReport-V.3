@@ -1,0 +1,7 @@
+[
+ {
+  "name": "restore UPLOAD_DIR legacy comment",
+  "from": "const { authRateLimiter, passwordResetRateLimiter } = require('./middleware/rateLimit');\n//\n// No longer created at import time.",
+  "to": "const { authRateLimiter, passwordResetRateLimiter } = require('./middleware/rateLimit');\n\n// Legacy only: uploaded binaries live in the GridFS `uploads` bucket and are\n// served by GET /api/files/:id. This path is kept so pre-GridFS files still\n// resolve and can still be unlinked.\n//\n// No longer created at import time."
+ }
+]
