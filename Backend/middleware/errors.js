@@ -7,10 +7,16 @@
 // All three converge here, and the terminal handler below is what makes the
 // first style safe -- Express 5 forwards a rejected async handler to it.
 
+// `code` is optional and machine-readable. The UI used to branch on substrings of
+// `message` -- StudentCatalog matched 'pending request' and 'already have this book
+// borrowed' -- so rewording an error silently changed which card the user saw,
+// with no crash and nothing in a log (finding F2). A code is the contract; the
+// message stays free to be reworded.
 class HttpError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code) {
     super(message);
     this.status = status;
+    if (code) this.code = code;
   }
 }
 
@@ -18,7 +24,11 @@ class HttpError extends Error {
 // rather than a rejected request, so it becomes a 500.
 function sendError(res, err, fallbackMessage) {
   const status = Number.isInteger(err?.status) ? err.status : 500;
-  res.status(status).json({ error: err?.message || fallbackMessage });
+  const body = { error: err?.message || fallbackMessage };
+  // Only HttpError sets a string code. Mongo driver errors also carry .code, but
+  // as a number (11000 and friends), and those must not leak into the response.
+  if (typeof err?.code === 'string') body.code = err.code;
+  res.status(status).json(body);
 }
 
 // Registered last so it catches rejections from every route above (Express 5

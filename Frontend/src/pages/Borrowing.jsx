@@ -327,14 +327,29 @@ const Borrowing = () => {
         api
           .get("/loans/requests", { params: { status } })
           .catch((err) => {
+            // A 404 here means the ROUTE is missing, not that there is no data --
+            // /api/loans/requests answers { items: [] } when a filter matches
+            // nothing. Coercing it to an empty list made a misprefixed or
+            // unregistered route indistinguishable from "no rejected requests",
+            // so losing that endpoint would have made rejected and cancelled
+            // history quietly disappear with nothing logged (finding F3).
+            //
+            // Flagged rather than rethrown: the loan history that did load is
+            // still worth showing, so this degrades visibly instead of failing
+            // the whole panel.
             if (err?.response?.status === 404) {
-              return { data: { items: [] } };
+              return { data: { items: [] }, __routeMissing: `/loans/requests?status=${status}` };
             }
             throw err;
           })
       );
 
       const [historyResponse, ...requestResponses] = await Promise.all([historyPromise, ...requestPromises]);
+
+      const missingRoutes = requestResponses.map((res) => res?.__routeMissing).filter(Boolean);
+      if (missingRoutes.length) {
+        console.error(`[Borrowing] request-history endpoint not found: ${missingRoutes.join(", ")}`);
+      }
       const historyItems = Array.isArray(historyResponse?.data?.items) ? historyResponse.data.items : [];
       const normalizedHistory = historyItems.map((item) => normalizeLoanEntry(item, { statusFallback: "Returned" }));
 

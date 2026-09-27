@@ -37,7 +37,20 @@ const SignIn = () => {
     } catch (err) {
       const status = err?.response?.status;
       const msg = err?.response?.data?.error || "Login failed";
-      setError(status === 404 ? "Service temporarily unavailable. Please try again." : msg);
+      // A 404 on the login endpoint is a configuration fault -- a misprefixed or
+      // unregistered auth route -- not a service outage. Reporting it as
+      // "temporarily unavailable" told the user to wait for something that will
+      // never resolve on its own, and hid the real cause from whoever reads the
+      // report (finding F3).
+      const notFound = status === 404;
+      if (notFound) {
+        console.error("[SignIn] POST /api/auth/login returned 404 - the auth route is not registered at this path");
+      }
+      setError(
+        notFound
+          ? "Sign-in is misconfigured on the server (login endpoint not found). Please contact the library administrator."
+          : msg
+      );
     } finally {
       setLoading(false);
     }

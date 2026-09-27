@@ -222,6 +222,92 @@ test('security regressions', async (t) => {
       assert.equal(attempt.status, 401);
       assert.equal(attempt.body?.error, 'invalid credentials');
     });
+    await t.test('F2: conflict responses carry a stable code, not just prose', async () => {
+      // The UI used to branch on substrings of the message, so rewording a string
+      // silently changed which feedback card a student saw. These codes are the
+      // contract now; the message is free prose. Both are returned, so nothing that
+      // reads err.response.data.error breaks.
+      const { Book, BorrowRequest } = require('../models');
+
+      const request = (bookId) =>
+        fetchJson(`${baseUrl}/api/student/borrow-requests`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...studentHeaders },
+          body: JSON.stringify({ bookId: String(bookId), days: 14 })
+        });
+
+      // CH-0002 is out to this student on an overdue loan, so the active-loan check
+      // is the one that must fire -- it is tested before the pending-request case
+      // precisely because it takes precedence.
+      const borrowed = await Book.findOne({ bookCode: 'CH-0002' }).lean();
+      const active = await request(borrowed._id);
+      assert.equal(active.status, 400);
+      assert.equal(active.body?.code, 'BORROW_ALREADY_ACTIVE');
+      assert.equal(typeof active.body?.error, 'string', 'the human-readable message must remain');
+
+      // A book with a pending request but NO active loan reaches the second check.
+      const fresh = await Book.create({
+        title: 'Pending Only',
+        author: 'A',
+        bookCode: 'CH-9001',
+        totalCopies: 2,
+        availableCopies: 2
+      });
+      const { User } = require('../models');
+      const student = await User.findOne({ email: 'student@test.local' }).lean();
+      await BorrowRequest.create({
+        userId: student._id,
+        bookId: fresh._id,
+        status: 'pending',
+        requestType: 'borrow',
+        daysRequested: 14,
+        createdAt: new Date()
+      });
+
+      const pending = await request(fresh._id);
+      assert.equal(pending.status, 400);
+      assert.equal(pending.body?.code, 'BORROW_REQUEST_PENDING');
+      assert.equal(typeof pending.body?.error, 'string');
+    });
+
+    await t.test('F2: a signup conflict names the field that actually collided', async () => {
+      // The message says "studentId or email already exists", and the old regex in
+      // StudentSignUp matched both halves every time -- so a duplicate email also
+      // marked the Student ID field as taken.
+      const signup = (body) =>
+        fetchJson(`${baseUrl}/api/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+      const base = {
+        fullName: 'Fresh Student',
+        password: 'Password123',
+        confirmPassword: 'Password123',
+        department: 'CITE'
+      };
+
+      // Existing email, brand-new student ID: only `email` may be reported.
+      const emailClash = await signup({
+        ...base,
+        studentId: '03-2324-777777',
+        email: 'student@test.local'
+      });
+      assert.equal(emailClash.status, 409);
+      assert.equal(emailClash.body?.code, 'SIGNUP_CONFLICT');
+      assert.deepEqual(emailClash.body?.fields, ['email'], 'only the colliding field may be named');
+
+      // Existing student ID, brand-new email: only `studentId` may be reported.
+      const idClash = await signup({
+        ...base,
+        studentId: '03-2324-000001',
+        email: 'brand-new-address@test.local'
+      });
+      assert.equal(idClash.status, 409);
+      assert.deepEqual(idClash.body?.fields, ['studentId'], 'only the colliding field may be named');
+    });
+
     await t.test('S3: password reset endpoints are rate limited', async () => {
       // The limiter allows 10 per 15 minutes; the 11th must be rejected. Before
       // this, the reset token -- 32 hex characters -- could be guessed without

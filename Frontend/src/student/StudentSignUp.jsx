@@ -110,11 +110,19 @@ const StudentSignUp = () => {
     } catch (e) {
       const msg = e?.response?.data?.error || "Unable to sign up right now. Please try again.";
       setError(msg);
-      if (/studentid/i.test(msg) && /exists|in use|duplicate/i.test(msg)) {
-        setErrors((prev) => ({ ...prev, studentId: "Student ID already registered" }));
-      }
-      if (/email/i.test(msg) && /exists|in use|duplicate/i.test(msg)) {
-        setErrors((prev) => ({ ...prev, email: "Email already registered" }));
+      // The backend now says WHICH field collided. This used to regex the message
+      // for /studentid/i and /email/i against /exists|in use|duplicate/i -- but the
+      // message is "studentId or email already exists", which matches BOTH patterns
+      // every time. A duplicate email therefore also marked the Student ID field as
+      // taken, sending the user to change a field that was fine (finding F2).
+      const data = e?.response?.data || {};
+      const conflictFields = Array.isArray(data.fields) ? data.fields : [];
+      if (data.code === "SIGNUP_CONFLICT" && conflictFields.length) {
+        setErrors((prev) => ({
+          ...prev,
+          ...(conflictFields.includes("studentId") ? { studentId: "Student ID already registered" } : {}),
+          ...(conflictFields.includes("email") ? { email: "Email already registered" } : {}),
+        }));
       }
     } finally {
       setLoading(false);

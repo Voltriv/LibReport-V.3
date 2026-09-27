@@ -280,9 +280,12 @@ async function connectMongo() {
     return;
   }
 
+  // Throws rather than exiting: this is a helper, and a helper that kills the
+  // process cannot be tested -- any test of this failure path would take the runner
+  // down with it (finding C2). The decision to exit belongs to the caller below,
+  // which is the entry point.
   if (!MONGO_URI) {
-    console.error('Missing MONGO_URI (or MONGODB_URI) in environment');
-    process.exit(1);
+    throw new Error('Missing MONGO_URI (or MONGODB_URI) in environment');
   }
 
   try {
@@ -365,7 +368,7 @@ async function borrowBookCore({ borrowerId, bookId, daysRaw, enforceUniqueLoan }
       returnedAt: null
     }).lean();
     if (existingLoan) {
-      throw new HttpError(400, 'You already have this book borrowed');
+      throw new HttpError(400, 'You already have this book borrowed', 'BORROW_ALREADY_ACTIVE');
     }
   }
 
@@ -637,7 +640,17 @@ app.post('/api/auth/signup', authRateLimiter, async (req, res) => {
       ]
     }).lean();
     if (existing) {
-      return res.status(409).json({ error: 'studentId or email already exists' });
+      // Says WHICH field collided. The message names both, and StudentSignUp used to
+      // regex it for /studentid/i and /email/i -- both matched every time, so a
+      // duplicate email marked the student ID field as taken as well (finding F2).
+      const fields = [];
+      if (existing.studentId === studentIdNorm) fields.push('studentId');
+      if (existing.email === emailNorm) fields.push('email');
+      return res.status(409).json({
+        error: 'studentId or email already exists',
+        code: 'SIGNUP_CONFLICT',
+        fields
+      });
     }
 
     const passwordHash = await bcrypt.hash(String(password), 10);
@@ -2082,6 +2095,21 @@ function dispatchStudentNotification(userId, payload) {
   });
 }
 
+// Marks a loan returned and gives the copy back to the catalogue.
+//
+// The write is a CONDITIONAL update rather than a read-then-save (finding N1).
+// Previously this checked loan.returnedAt on a document already in memory, saved,
+// and then incremented availableCopies unconditionally. Two concurrent returns of
+// the same loan -- a double-clicked button is enough -- both saw returnedAt as null,
+// both saved, and both incremented: the book gained a copy that does not exist.
+//
+// The decrement side (borrowBookCore) was already atomic, guarded by
+// availableCopies > 0. So the drift only ever went one way: counts inflate, and a
+// book shows as available when every physical copy is out. scripts/reconcile-copies.js
+// repairs accumulated drift; this stops new drift.
+//
+// The $inc now runs only when this call is the one that actually flipped the loan,
+// which findOneAndUpdate reports by returning null when the filter no longer matches.
 async function markLoanAsReturned(loan) {
   if (!loan) {
     return { ok: false, status: 404, message: 'Active loan not found' };
@@ -2090,14 +2118,24 @@ async function markLoanAsReturned(loan) {
     return { ok: false, status: 400, message: 'Already returned' };
   }
 
-  loan.returnedAt = new Date();
-  loan.overdueNotifiedAt = null;
-  await loan.save();
-  if (loan.bookId) {
-    await Book.findByIdAndUpdate(loan.bookId, { $inc: { availableCopies: 1 } });
+  const returnedAt = new Date();
+  const claimed = await Loan.findOneAndUpdate(
+    { _id: loan._id, returnedAt: null },
+    { $set: { returnedAt, overdueNotifiedAt: null } },
+    { new: true }
+  );
+
+  // Lost the race: another request returned this loan first. Same answer the
+  // in-memory check above would have given, so the caller sees no difference.
+  if (!claimed) {
+    return { ok: false, status: 400, message: 'Already returned' };
   }
 
-  return { ok: true, loan };
+  if (claimed.bookId) {
+    await Book.findByIdAndUpdate(claimed.bookId, { $inc: { availableCopies: 1 } });
+  }
+
+  return { ok: true, loan: claimed };
 }
 
 app.post('/api/loans/borrow', adminRequired, async (req, res) => {
@@ -2168,7 +2206,7 @@ app.post('/api/student/borrow-requests', studentRequired, async (req, res) => {
     returnedAt: null
   }).lean();
   if (activeLoan) {
-    return res.status(400).json({ error: 'You already have this book borrowed' });
+    return res.status(400).json({ error: 'You already have this book borrowed', code: 'BORROW_ALREADY_ACTIVE' });
   }
 
   const pending = await BorrowRequest.findOne({
@@ -2178,7 +2216,7 @@ app.post('/api/student/borrow-requests', studentRequired, async (req, res) => {
     requestType: 'borrow'
   }).lean();
   if (pending) {
-    return res.status(400).json({ error: 'You already have a pending request for this book' });
+    return res.status(400).json({ error: 'You already have a pending request for this book', code: 'BORROW_REQUEST_PENDING' });
   }
 
   let chosenDays;
@@ -2643,22 +2681,22 @@ app.post('/api/student/return', studentRequired, async (req, res) => {
 });
 
 app.delete('/api/loans/:id', adminRequired, async (req, res) => {
+  // findOneAndDelete rather than read-then-deleteOne (finding N2): the old code
+  // read returnedAt, deleted, then incremented, so a delete racing a return
+  // incremented twice. Exactly one caller receives the document back from
+  // findOneAndDelete, and only that caller adjusts the count.
   let loan;
   try {
-    loan = await Loan.findById(req.params.id);
+    loan = await Loan.findOneAndDelete({ _id: req.params.id });
   } catch (err) {
     return res.status(400).json({ error: 'Invalid loan id' });
   }
 
   if (!loan) return res.status(404).json({ error: 'Loan not found' });
 
-  const wasReturned = Boolean(loan.returnedAt);
-  const bookId = loan.bookId;
-
-  await Loan.deleteOne({ _id: loan._id });
-
-  if (!wasReturned && bookId) {
-    await Book.findByIdAndUpdate(bookId, { $inc: { availableCopies: 1 } });
+  // Only an ACTIVE loan was holding a copy, so only that case returns one.
+  if (!loan.returnedAt && loan.bookId) {
+    await Book.findByIdAndUpdate(loan.bookId, { $inc: { availableCopies: 1 } });
   }
 
   return res.status(204).send();

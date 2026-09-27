@@ -166,10 +166,20 @@ const StudentCatalog = () => {
 
     } catch (err) {
       const serverMessage = err.response?.data?.error || 'Failed to submit your request. Please try again.';
-      const normalized = serverMessage.toLowerCase();
+      // Branch on the backend's stable `code`, not on substrings of the message.
+      // This used to lowercase the message and look for 'pending request',
+      // 'already have this book borrowed' and 'rejected', so rewording a backend
+      // string silently downgraded the user's feedback to a generic error -- no
+      // crash, nothing logged (finding F2).
+      //
+      // The old third branch matched 'rejected'. No backend error contains that
+      // word: the only match was 'Request rejected', which is a SUCCESS message on
+      // the admin reject route. That branch was unreachable, so it is gone rather
+      // than translated into a code that nothing emits.
+      const code = err.response?.data?.code;
       let feedback = null;
 
-      if (normalized.includes('pending request')) {
+      if (code === 'BORROW_REQUEST_PENDING') {
         feedback = {
           type: 'info',
           title: 'Request already submitted',
@@ -177,21 +187,13 @@ const StudentCatalog = () => {
           header: `Pending request for "${bookTitle}"`,
           message: 'You already have a pending request for this title. Visit Borrow Requests for updates.',
         };
-      } else if (normalized.includes('already have this book borrowed')) {
+      } else if (code === 'BORROW_ALREADY_ACTIVE') {
         feedback = {
           type: 'info',
           title: 'Book already approved',
           statusLabel: 'Approved',
           header: `"${bookTitle}" is already checked out`,
           message: 'This book has already been approved and is currently checked out to you.',
-        };
-      } else if (normalized.includes('rejected')) {
-        feedback = {
-          type: 'info',
-          title: 'Previous request rejected',
-          statusLabel: 'Rejected',
-          header: `Recent decision for "${bookTitle}"`,
-          message: 'Your previous request was rejected. Contact the library team if you need more details.',
         };
       }
 

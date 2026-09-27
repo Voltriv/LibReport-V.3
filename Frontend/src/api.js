@@ -147,7 +147,16 @@ api.interceptors.response.use(
       const at = (path) => {
         try { return window.location.pathname === path; } catch { return false; }
       };
-      if (status === 401 || status === 403) {
+      // 401 only. This used to fire on 403 as well, which conflated "your session
+      // is gone" with "you are signed in but not allowed to do that" (finding F1).
+      // The visible effect was users being thrown back to the sign-in screen at
+      // random: any endpoint answering 403 logged them out, even though their token
+      // was perfectly valid. It also made the `status === 403` branch in
+      // StudentCatalog.jsx unreachable -- the redirect always won the race.
+      //
+      // A 403 is now passed through to the caller, which is the only place that
+      // knows what the refusal means.
+      if (status === 401) {
         const role = getStoredRole();
         const target = role === 'student' ? '/student/signin' : '/signin';
 

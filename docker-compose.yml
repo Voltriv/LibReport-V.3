@@ -4,18 +4,34 @@ services:
     image: mongo:6
     restart: unless-stopped
     ports:
-      - "27017:27017"
+      # Bound to loopback deliberately. "27017:27017" publishes on every
+      # interface, so on any shared or untrusted network this was an open
+      # database reachable from other hosts. Nothing outside this compose file
+      # needs it: the backend connects over the host port from the same machine.
+      - "127.0.0.1:27017:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: libreport
-      MONGO_INITDB_ROOT_PASSWORD: libreport
+      # Taken from the environment rather than hardcoded. The previous
+      # libreport/libreport pair lived in version control, so every checkout
+      # shared one credential. Set MONGO_ROOT_USERNAME / MONGO_ROOT_PASSWORD in a
+      # local .env; the defaults here exist only so `docker compose up` still
+      # works for a throwaway local stack.
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-libreport}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-libreport}
     volumes:
       - mongo-data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--username", "libreport", "--password", "libreport", "--eval", "db.adminCommand('ping')"]
+      test:
+        - CMD
+        - mongosh
+        - --username
+        - ${MONGO_ROOT_USERNAME:-libreport}
+        - --password
+        - ${MONGO_ROOT_PASSWORD:-libreport}
+        - --eval
+        - db.adminCommand('ping')
       interval: 10s
       timeout: 5s
       retries: 10
 
 volumes:
   mongo-data:
-

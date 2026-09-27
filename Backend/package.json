@@ -3,6 +3,9 @@
     "version": "1.0.0",
     "private": true,
     "type": "commonjs",
+    "engines": {
+        "node": ">=20.11"
+    },
     "scripts": {
         "start": "node server.js",
         "dev": "node scripts/bootstrap-dev.js && node --watch server.js",
@@ -27,7 +30,9 @@
         "validate:books": "node scripts/books_validate.js",
         "import:books:data": "node scripts/import_books.js data/books.template.csv",
         "migrate:covers": "node scripts/migrate_legacy_covers.js",
-        "test:characterize": "UPDATE_ROUTE_SNAPSHOT=1 node --test tests/route-characterization.test.js"
+        "test:characterize": "UPDATE_ROUTE_SNAPSHOT=1 node --test tests/route-characterization.test.js",
+        "db:reconcile": "node scripts/reconcile-copies.js",
+        "db:reconcile:apply": "node scripts/reconcile-copies.js --apply"
     },
     "dependencies": {
         "bcryptjs": "^3.0.2",
@@ -39,10 +44,13 @@
         "helmet": "^8.3.0",
         "jsonwebtoken": "^9.0.2",
         "libreport-workspace": "file:..",
-        "mongodb-memory-server": "^10.2.3",
         "mongoose": "^8.8.0",
         "morgan": "^1.10.1",
         "validator": "^13.15.15",
-        "web-push": "^3.6.7"
+        "web-push": "^3.6.7",
+        "mongodb": "^6.20.0"
+    },
+    "devDependencies": {
+        "mongodb-memory-server": "^10.2.3"
     }
 }
